@@ -1,0 +1,38 @@
+# Örnek iş akışı: examples/acme snapshot'ına dokunan her PR'a etki raporu yorumu.
+# Başka bir yapılandırma reposunda aynısı, `uses:` satırı
+# `gokaysari/kanit/.github/actions/kanit-check@<commit>` olacak biçimde kullanılır.
+#
+# Güvenlik: yalnızca `pull_request` (pull_request_target değil). Sır kullanılmaz; fork
+# PR'larında belirteç salt okunurdur ve eylem yorum yerine iş özetine yazar.
+name: kanit-pr
+
+on:
+  pull_request:
+    paths:
+      - "examples/acme/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: kanit-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  etki-raporu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      batfish:
+        image: batfish/allinone
+        ports:
+          - 9996:9996
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2 # birleştirme commit'i ve hedef daldaki ebeveyni
+          persist-credentials: false
+      - uses: ./.github/actions/kanit-check
+        with:
+          snapshot: examples/acme

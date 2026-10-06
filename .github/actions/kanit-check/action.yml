@@ -1,0 +1,159 @@
+name: Kanıt PR etki raporu
+description: >-
+  PR'daki ağ yapılandırmasını (aday) hedef daldakine (mevcut) karşı Batfish ile doğrular,
+  raporu PR yorumu olarak yazar ve ihlalde kontrolü kırmızı yapar. Model çağrısı yapmaz,
+  sır kullanmaz. Batfish'i iş akışı bir servis kapsayıcısı olarak sağlamalıdır.
+
+inputs:
+  snapshot:
+    description: "configs/ ve policy.json içeren klasör (repo köküne göre), ör. examples/acme"
+    required: true
+  base-ref:
+    description: >-
+      Mevcut snapshot'ın okunacağı commit. Boşsa: PR birleştirme commit'inin ilk ebeveyni
+      (checkout'ta fetch-depth: 2 gerekir), o yoksa PR'ın hedef commit'i.
+    default: ""
+  batfish-host:
+    description: Batfish sunucusu
+    default: localhost
+  comment:
+    description: "Raporu PR yorumu olarak yaz (fork PR'larında yazılmaz, yalnızca iş özetine düşer)"
+    default: "true"
+  github-token:
+    description: Yorum yazmak için belirteç; iş akışında pull-requests write izni gerekir
+    default: ${{ github.token }}
+  python-version:
+    description: Kurulacak Python; boş bırakılırsa runner'daki python kullanılır
+    default: "3.12"
+  report-path:
+    description: Raporun yazılacağı dosya
+    default: kanit-rapor.md
+
+outputs:
+  result:
+    description: accepted | rejected | error
+    value: ${{ steps.check.outputs.result }}
+  exit-code:
+    description: "0 kabul, 1 ret, 2 doğrulama çalışmadı"
+    value: ${{ steps.check.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    - if: inputs.python-version != ''
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Kanıt'ı kur
+      shell: bash
+      run: |
+        root="$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)"
+        python -m pip install -q "$root"
+
+    - name: Batfish hazır olana kadar bekle
+      shell: bash
+      env:
+        BATFISH_HOST: ${{ inputs.batfish-host }}
+      run: |
+        for i in $(seq 1 60); do
+          python -c "from pybatfish.client.session import Session; Session(host='$BATFISH_HOST')" 2>/dev/null && exit 0
+          sleep 5
+        done
+        echo "::error::Batfish ($BATFISH_HOST) hazır olmadı"
+        exit 1
+
+    - name: Mevcut snapshot'ı hedef daldan çıkar
+      id: base
+      shell: bash
+      env:
+        SNAPSHOT: ${{ inputs.snapshot }}
+        BASE_REF: ${{ inputs.base-ref }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      run: |
+        set -euo pipefail
+        snap="${SNAPSHOT#./}"; snap="${snap%/}"
+        base="$BASE_REF"
+        if [ -z "$base" ]; then
+          if git rev-parse -q --verify 'HEAD^2' >/dev/null; then
+            base="$(git rev-parse 'HEAD^1')"
+          else
+            base="$PR_BASE_SHA"
+          fi
+        fi
+        if [ -z "$base" ]; then
+          echo "::error::Mevcut snapshot için commit bulunamadı; base-ref verin"
+          exit 1
+        fi
+        git cat-file -e "$base^{commit}" 2>/dev/null || git fetch -q --no-tags --depth=1 origin "$base"
+        base="$(git rev-parse "$base^{commit}")"
+        dest="${RUNNER_TEMP:-/tmp}/kanit-base"
+        rm -rf "$dest"; mkdir -p "$dest"
+        # Snapshot hedef dalda yoksa klasör boş kalır; kanit check bunu "çalışmadı" sayar.
+        if git cat-file -e "$base:$snap" 2>/dev/null; then
+          git archive "$base" -- "$snap" | tar -x -C "$dest"
+        fi
+        echo "dir=$dest/$snap" >> "$GITHUB_OUTPUT"
+        echo "sha=$base" >> "$GITHUB_OUTPUT"
+        echo "snapshot=$snap" >> "$GITHUB_OUTPUT"
+
+    - name: Doğrula (model çağrısı yok)
+      id: check
+      shell: bash
+      env:
+        BASE_DIR: ${{ steps.base.outputs.dir }}
+        BASE_SHA: ${{ steps.base.outputs.sha }}
+        SNAPSHOT: ${{ steps.base.outputs.snapshot }}
+        REPORT: ${{ inputs.report-path }}
+        BATFISH_HOST: ${{ inputs.batfish-host }}
+        BASE_BRANCH: ${{ github.base_ref }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        set +e
+        kanit check --base "$BASE_DIR" --candidate "$SNAPSHOT" \
+          --batfish-host "$BATFISH_HOST" --out "$REPORT" \
+          --base-label "${BASE_BRANCH:-hedef} @ ${BASE_SHA:0:7}" \
+          --candidate-label "PR #${PR_NUMBER:-?} @ ${HEAD_SHA:0:7} ($SNAPSHOT)" \
+          2>&1 | tee "$REPORT.log"
+        code=${PIPESTATUS[0]}
+        case "$code" in
+          0) result=accepted ;;
+          1) result=rejected ;;
+          *) result=error ;;
+        esac
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        echo "result=$result" >> "$GITHUB_OUTPUT"
+        if [ -f "$REPORT" ]; then cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"; fi
+        exit 0
+
+    - name: Raporu PR yorumu olarak yaz
+      if: always() && inputs.comment == 'true' && github.event.pull_request.number
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        REPORT: ${{ inputs.report-path }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      run: |
+        if [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
+          # Fork PR'ında belirteç salt okunurdur; yorum yerine iş özeti kullanılır.
+          echo "::notice::Fork PR'ı: yorum yazılmadı, rapor iş özetinde."
+          exit 0
+        fi
+        python "$GITHUB_ACTION_PATH/post_comment.py" "$REPORT" \
+          --pr "$PR_NUMBER" --marker kanit-rapor --log "$REPORT.log"
+
+    - name: Sonuç
+      if: always()
+      shell: bash
+      env:
+        CODE: ${{ steps.check.outputs.exit-code }}
+        RESULT: ${{ steps.check.outputs.result }}
+      run: |
+        case "${RESULT:-error}" in
+          accepted) echo "Kanıt: değişiklik kabul edildi." ;;
+          rejected) echo "::error::Kanıt: değişiklik reddedildi (değişmez ihlali ya da yeni sorun). Rapor PR yorumunda." ;;
+          *) echo "::error::Kanıt: doğrulama çalışmadı; değişiklik doğrulanmış sayılmaz." ;;
+        esac
+        exit "${CODE:-2}"
