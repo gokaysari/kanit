@@ -4,9 +4,10 @@
 yapılandırmalarını Batfish'e yükler, değişmezleri aday üzerinde kanıtlar ve etki raporu
 yazar. Çıkış kodu: 0 kabul (ya da değişiklik yok), 1 ret, 2 doğrulama çalışmadı.
 
-Değişmezler hedef daldaki `policy.json`'dan okunur; PR bir değişmezi silse ya da
-gevşetse bile hedef daldaki hâli uygulanır. PR'ın eklediği yeni değişmezler de
-kontrol edilir (yalnızca sıkılaştırabilir).
+Değişmezler hedef daldaki `policy.json`'dan okunur ve PR'ın eklediği yeni değişmezler
+de kontrol edilir (yalnızca sıkılaştırabilir). Hedef daldaki bir değişmezi silen ya da
+değiştiren PR, yapılandırması ne olursa olsun reddedilir: aksi hâlde değişmez önce tek
+başına silinip sonraki PR'da ihlal edilebilirdi.
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ class Review:
     invariants: list[FlowCheck] = field(default_factory=list)
     added_invariants: list[FlowCheck] = field(default_factory=list)
     dropped_invariants: list[FlowCheck] = field(default_factory=list)
+    cand_invariants: list[FlowCheck] = field(default_factory=list)
     verdict: Verdict | None = None  # None: yapılandırma ve değişmezler değişmedi
     error: str | None = None  # doğrulama çalışmadı (altyapı ya da hedef dal sorunu)
 
@@ -45,15 +47,44 @@ class Review:
 
     @property
     def accepted(self) -> bool:
-        if self.error:
+        if self.error or self.dropped_invariants:
             return False
         return self.verdict is None or self.verdict.accepted
+
+    def dropped_reasons(self) -> list[str]:
+        """Hedef daldaki her silinen ya da değiştirilen değişmez için açıklama."""
+        by_name = {c.name: c for c in self.cand_invariants}
+        out = []
+        for old in self.dropped_invariants:
+            new = by_name.get(old.name)
+            if new is None:
+                out.append(f"'{old.name}' silindi")
+                continue
+            fields = ("start", "src", "dst", "protocol", "dst_ports", "expect")
+            diffs = [
+                f"{f}: {getattr(old, f) or '-'} -> {getattr(new, f) or '-'}"
+                for f in fields
+                if getattr(old, f) != getattr(new, f)
+            ]
+            out.append(f"'{old.name}' değiştirildi ({'; '.join(diffs)})")
+        return out
 
     @property
     def exit_code(self) -> int:
         if self.error:
             return EXIT_ERROR
         return EXIT_ACCEPTED if self.accepted else EXIT_REJECTED
+
+
+# policy.json'un kökü liste ya da öğesi sayı olduğunda read_invariants AttributeError /
+# TypeError atar; bunlar da okuma hatasıdır, ham traceback değil.
+_READ_ERRORS = (OSError, ValueError, ProposalError, AttributeError, TypeError)
+
+
+def _why(exc: Exception) -> str:
+    if isinstance(exc, (AttributeError, TypeError)):
+        return f"{POLICY_FILE} beklenen biçimde değil ({{\"invariants\": [...]}}): {exc}"
+    return str(exc)
 
 
 def _read_policy(snapshot: Path) -> str:
@@ -66,21 +97,22 @@ def run_check(base: Path, candidate: Path, verifier: Verifier) -> Review:
     try:
         review = Review(read_configs(base), {}, base_policy=_read_policy(base))
         review.invariants = read_invariants(base)
-    except (OSError, ValueError, ProposalError) as exc:
-        return Review({}, {}, error=f"Hedef daldaki snapshot okunamadı: {exc}")
+    except _READ_ERRORS as exc:
+        return Review({}, {}, error=f"Hedef daldaki snapshot okunamadı: {_why(exc)}")
 
     try:
         review.cand_configs = read_configs(candidate)
         review.cand_policy = _read_policy(candidate)
-        cand_invariants = read_invariants(candidate)
-    except (OSError, ValueError, ProposalError) as exc:
+        review.cand_invariants = cand_invariants = read_invariants(candidate)
+    except _READ_ERRORS as exc:
         # PR'ın bozduğu snapshot reddedilir; doğrulanamayan değişiklik kabul edilmez.
-        review.verdict = Verdict(error=f"PR'daki snapshot okunamadı: {exc}")
+        review.verdict = Verdict(error=f"PR'daki snapshot okunamadı: {_why(exc)}")
         return review
 
     review.added_invariants = [c for c in cand_invariants if c not in review.invariants]
     review.dropped_invariants = [c for c in review.invariants if c not in cand_invariants]
     if not review.changed:
+        # Yalnızca değişmez silen PR da buraya gelir; Batfish gerekmez, kabul edilmez.
         return review
 
     with tempfile.TemporaryDirectory(prefix="kanit-check-") as tmp:
@@ -140,10 +172,12 @@ def _diff(base: dict[str, str], cand: dict[str, str], prefix: str) -> list[str]:
 def render(review: Review, base_label: str = "hedef dal", cand_label: str = "PR") -> str:
     if review.error:
         status = "DOĞRULAMA ÇALIŞMADI"
+    elif not review.accepted:
+        status = "REDDEDİLDİ"
     elif review.verdict is None:
         status = "YAPILANDIRMA DEĞİŞMEDİ"
     else:
-        status = "KABUL EDİLDİ" if review.accepted else "REDDEDİLDİ"
+        status = "KABUL EDİLDİ"
     out = [
         f"## Kanıt etki raporu: {status}",
         "",
@@ -155,6 +189,13 @@ def render(review: Review, base_label: str = "hedef dal", cand_label: str = "PR"
             f"Değişiklik doğrulanamadı; kabul edilmiş sayılmaz. {_cell(review.error)}",
             "",
         ]
+    if review.dropped_invariants:
+        out += [
+            "**Ret sebebi: bu PR hedef daldaki değişmezleri siliyor ya da değiştiriyor.** "
+            "Değişmezin kaldırılması ya da gevşetilmesi bu kontrolden geçemez; "
+            "yapılandırma değişikliğinden ayrı, insan kararıyla yapılmalıdır.",
+            "",
+        ] + [f"- {_cell(r)}" for r in review.dropped_reasons()] + [""]
 
     diff = _diff(review.base_configs, review.cand_configs, f"{CONFIG_DIR}/")
     diff += _diff(
@@ -201,14 +242,6 @@ def render(review: Review, base_label: str = "hedef dal", cand_label: str = "PR"
             if items:
                 out += [f"**{title}**", ""] + [f"- {_code(i)}" for i in items] + [""]
 
-    if review.dropped_invariants:
-        out += [
-            "**Uyarı:** bu PR değişmez dosyasından şu kuralları siliyor ya da değiştiriyor. "
-            "Doğrulama hedef daldaki hâlleriyle yapıldı; kaldırılmaları ayrıca insan onayı "
-            "ister:",
-            "",
-        ] + [f"- {_cell(c.name)}" for c in review.dropped_invariants] + [""]
-
     out += [
         "<sub>Model çağrısı yapılmadı; yalnızca Batfish doğrulaması. Değişmezler hedef "
         f"daldaki <code>{POLICY_FILE}</code> dosyasından okunur. Araç hiçbir cihaza "
@@ -243,11 +276,13 @@ def main(args: argparse.Namespace, verifier: Verifier | None = None) -> int:
     args.out.write_text(render(review, args.base_label, args.candidate_label))
     if review.error:
         print(review.error, file=sys.stderr)
-    elif review.verdict is None:
-        print("Yapılandırma değişmedi.")
     else:
         print("KABUL" if review.accepted else "RET")
-        if not review.accepted:
+        for reason in review.dropped_reasons():
+            print(f"  DEĞİŞMEZ SİLİNDİ/DEĞİŞTİ: {reason}")
+        if review.verdict is None:
+            print("  Yapılandırma değişmedi.")
+        elif not review.verdict.accepted:
             print("  " + review.verdict.feedback().replace("\n", "\n  "))
     print(f"Rapor: {args.out}")
     return review.exit_code

@@ -21,6 +21,7 @@ from pathlib import Path
 
 MAX_BODY = 60000  # GitHub yorum sınırı 65536 karakter
 LOG_TAIL = 40
+BOT_LOGIN = os.environ.get("KANIT_BOT_LOGIN", "github-actions[bot]")  # GITHUB_TOKEN'ın yazarı
 
 
 def build_body(marker: str, report: Path, log: Path | None) -> str:
@@ -74,7 +75,12 @@ class GitHub:
             for c in items:
                 # Yalnızca bu iş akışının (bot) yazdığı yorum güncellenir; kullanıcı
                 # yorumuna işaret kopyalansa bile ona dokunulmaz.
-                if c.get("body", "").startswith(tag) and c.get("user", {}).get("type") == "Bot":
+                user = c.get("user") or {}
+                if (
+                    c.get("body", "").startswith(tag)
+                    and user.get("type") == "Bot"
+                    and user.get("login") == BOT_LOGIN
+                ):
                     return c["id"]
             if len(items) < 100:
                 return None

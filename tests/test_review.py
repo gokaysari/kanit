@@ -5,6 +5,8 @@ import json
 import shutil
 from pathlib import Path
 
+import pytest
+
 from kanit import cli, review
 from kanit.models import CheckResult, FlowCheck, Proposal, Verdict
 from kanit.snapshot import POLICY_FILE, apply_edits, read_configs
@@ -87,7 +89,7 @@ def test_dropping_an_invariant_in_the_pr_does_not_weaken_the_check(tmp_path):
     assert not r.accepted and r.exit_code == 1
     assert [c.name for c in r.dropped_invariants] == ["Kullanıcılar veritabanı sunucusuna SSH yapamaz"]
     md = review.render(r)
-    assert "**Uyarı:**" in md and "SSH yapamaz" in md
+    assert "Ret sebebi" in md and "SSH yapamaz' silindi" in md
 
 
 def test_invariant_added_in_pr_is_also_checked(tmp_path):
@@ -164,4 +166,78 @@ def cli_args(base, cand, out):
     p = argparse.ArgumentParser()
     review.add_subparser(p.add_subparsers(dest="cmd"))
     return p.parse_args(["check", "--base", str(base), "--candidate", str(cand), "--out", str(out)])
+
+
+def test_pr_that_only_drops_an_invariant_is_rejected(tmp_path, capsys):
+    """İki adımlı kaçış: önce değişmezi tek başına sil, sonra ihlal et. İlk adım kırmızı."""
+    cand = make_snapshot(tmp_path, "pr")
+    policy = json.loads((cand / POLICY_FILE).read_text())
+    policy["invariants"] = [i for i in policy["invariants"] if i.get("dst_ports") != "22"]
+    (cand / POLICY_FILE).write_text(json.dumps(policy))
+    verifier = RecordingVerifier()
+    out = tmp_path / "r.md"
+    assert review.main(cli_args(ACME, cand, out), verifier=verifier) == 1
+    assert verifier.calls == []
+    md = out.read_text()
+    assert "Kanıt etki raporu: REDDEDİLDİ" in md and "DEĞİŞMEDİ" not in md
+    assert "'Kullanıcılar veritabanı sunucusuna SSH yapamaz' silindi" in md
+    assert "DEĞİŞMEZ SİLİNDİ/DEĞİŞTİ" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("expect", "reachable"),
+        ("src", "10.10.10.0/32"),
+        ("dst", "10.20.20.31"),
+        ("protocol", "UDP"),
+        ("dst_ports", "2222"),
+        ("start", "@enter(core[GigabitEthernet0/2])"),
+    ],
+)
+def test_pr_that_weakens_an_invariant_is_rejected(tmp_path, field, value):
+    cand = make_snapshot(tmp_path, "pr")
+    policy = json.loads((cand / POLICY_FILE).read_text())
+    ssh = next(i for i in policy["invariants"] if i.get("dst_ports") == "22")
+    old = ssh[field]
+    ssh[field] = value
+    (cand / POLICY_FILE).write_text(json.dumps(policy))
+
+    r = review.run_check(ACME, cand, RecordingVerifier())
+    assert r.exit_code == 1
+    md = review.render(r)
+    assert "REDDEDİLDİ" in md and "Ret sebebi" in md
+    assert f"değiştirildi ({field}: {old} -> {value})" in md
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        "[1, 2]",  # kök liste
+        '{"invariants": [5]}',  # öğe sayı
+        '{"invariants": 5}',  # liste değil
+        "{bozuk json",
+    ],
+)
+def test_broken_candidate_policy_is_rejected_with_report(tmp_path, policy):
+    cand = make_snapshot(tmp_path, "pr", "02-dogru.json")
+    (cand / POLICY_FILE).write_text(policy)
+    out = tmp_path / "r.md"
+    assert review.main(cli_args(ACME, cand, out), verifier=RecordingVerifier()) == 1
+    md = out.read_text()
+    assert "REDDEDİLDİ" in md and "PR'daki snapshot okunamadı" in md
+
+
+@pytest.mark.parametrize("policy", ["[1, 2]", '{"invariants": [5]}', "{bozuk json"])
+def test_broken_base_policy_means_verification_did_not_run(tmp_path, policy):
+    base = make_snapshot(tmp_path, "base")
+    (base / POLICY_FILE).write_text(policy)
+    out = tmp_path / "r.md"
+    rc = review.main(
+        cli_args(base, make_snapshot(tmp_path, "pr", "02-dogru.json"), out),
+        verifier=RecordingVerifier(),
+    )
+    assert rc == 2
+    md = out.read_text()
+    assert "DOĞRULAMA ÇALIŞMADI" in md and "Hedef daldaki snapshot okunamadı" in md
 

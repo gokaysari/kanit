@@ -294,9 +294,16 @@ def test_comment_script_reports_missing_report_instead_of_staying_silent(tmp_pat
     assert "ConnectionError: Batfish yok" in comment["body"]
 
 
-def test_comment_script_does_not_overwrite_a_human_comment_with_the_marker(tmp_path, github):
-    github.comments[1] = {"id": 1, "pr": 3, "body": "<!-- kanit-rapor -->\nben insanım",
-                          "user": {"login": "biri", "type": "User"}}
+@pytest.mark.parametrize(
+    "user",
+    [
+        {"login": "biri", "type": "User"},
+        {"login": "baska-bot[bot]", "type": "Bot"},  # başka bir uygulamanın yorumu
+    ],
+)
+def test_comment_script_only_updates_its_own_comment(tmp_path, github, user):
+    github.comments[1] = {"id": 1, "pr": 3, "body": "<!-- kanit-rapor -->\nbaşkasının",
+                          "user": user}
     report = tmp_path / "r.md"
     report.write_text("## Kanıt etki raporu: KABUL EDİLDİ\n")
     env = {**os.environ, "GITHUB_TOKEN": TOKEN, "GITHUB_REPOSITORY": REPO,
@@ -305,8 +312,31 @@ def test_comment_script_does_not_overwrite_a_human_comment_with_the_marker(tmp_p
         [sys.executable, str(ACTION_DIR / "post_comment.py"), str(report), "--pr", "3"],
         env=env, check=True, capture_output=True,
     )
-    assert github.comments[1]["body"].endswith("ben insanım")
+    assert github.comments[1]["body"].endswith("başkasının")
     assert "KABUL EDİLDİ" in github.comments[2]["body"]
+
+
+@pytest.mark.batfish
+@pytest.mark.skipif(not HOST, reason="BATFISH_HOST tanımlı değil")
+def test_pr_that_only_drops_an_invariant_turns_red(tmp_path, github):
+    """İki adımlı kaçışın ilk adımı (yalnızca policy.json) eylemde de kırmızı."""
+    pr = PullRequest(tmp_path)
+    git(pr.repo, "checkout", "-q", "pr")
+    policy_path = pr.repo / "examples" / "acme" / "policy.json"
+    policy = json.loads(policy_path.read_text())
+    policy["invariants"] = [i for i in policy["invariants"] if i.get("dst_ports") != "22"]
+    policy_path.write_text(json.dumps(policy, ensure_ascii=False, indent=2))
+    git(pr.repo, "commit", "-qam", "değişmezi sil")
+    pr.head_sha = git(pr.repo, "rev-parse", "HEAD")
+    git(pr.repo, "checkout", "-q", "--detach", pr.main_sha)
+    git(pr.repo, "merge", "-q", "--no-ff", "-m", "merge", pr.head_sha)
+
+    run = run_action(pr, github, tmp_path)
+    assert run["failed"] and run["rc"] == 1
+    assert run["ctx"]["steps.check.outputs.result"] == "rejected"
+    (comment,) = github.comments.values()
+    assert "Kanıt etki raporu: REDDEDİLDİ" in comment["body"]
+    assert "SSH yapamaz' silindi" in comment["body"]
 
 
 def test_workflows_follow_security_limits():

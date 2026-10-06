@@ -81,6 +81,10 @@ jobs:
         run: |
           first="$(printf '%s\n' "$COMMENT" | head -n1 | tr -d '\r')"
           intent="${first#/kanit plan }"
+          # Değişmezler PR'dan değil varsayılan daldan: PR policy.json'u gevşetemesin.
+          if [ -f "$SNAPSHOT/policy.json" ]; then
+            cp "$SNAPSHOT/policy.json" ".kanit-pr/$SNAPSHOT/policy.json"
+          fi
           set +e
           kanit plan "$intent" --snapshot ".kanit-pr/$SNAPSHOT" --out kanit-plan.md 2>&1 | tee kanit-plan.log
           echo "exit-code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"

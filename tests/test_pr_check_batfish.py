@@ -70,4 +70,32 @@ def test_pr_cannot_pass_by_deleting_the_invariant(tmp_path):
 
     rc, md = check(ACME, cand, tmp_path / "r.md")
     assert rc == 1
-    assert "**ihlal**" in md and "**Uyarı:**" in md
+    assert "**ihlal**" in md and "Ret sebebi" in md
+
+
+def test_pr_that_only_drops_an_invariant_is_rejected(tmp_path):
+    """İki adımlı kaçışın ilk adımı: yalnızca policy.json'dan SSH değişmezini silen PR."""
+    cand = tmp_path / "pr"
+    shutil.copytree(ACME, cand)
+    policy = json.loads((cand / POLICY_FILE).read_text())
+    policy["invariants"] = [i for i in policy["invariants"] if i.get("dst_ports") != "22"]
+    (cand / POLICY_FILE).write_text(json.dumps(policy, ensure_ascii=False, indent=2))
+
+    rc, md = check(ACME, cand, tmp_path / "r.md")
+    print(md)
+    assert rc == 1
+    assert "Kanıt etki raporu: REDDEDİLDİ" in md and "DEĞİŞMEDİ" not in md
+    assert "'Kullanıcılar veritabanı sunucusuna SSH yapamaz' silindi" in md
+
+
+def test_pr_that_only_weakens_an_invariant_is_rejected(tmp_path):
+    cand = tmp_path / "pr"
+    shutil.copytree(ACME, cand)
+    policy = json.loads((cand / POLICY_FILE).read_text())
+    ssh = next(i for i in policy["invariants"] if i.get("dst_ports") == "22")
+    ssh["expect"] = "reachable"
+    (cand / POLICY_FILE).write_text(json.dumps(policy, ensure_ascii=False, indent=2))
+
+    rc, md = check(ACME, cand, tmp_path / "r.md")
+    assert rc == 1
+    assert "değiştirildi (expect: blocked -> reachable)" in md
