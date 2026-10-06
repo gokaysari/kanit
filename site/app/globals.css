@@ -1,6 +1,8 @@
 :root {
   --ink: #152238;
   --ink-soft: #4a5a73;
+  /* Yalnızca büyük, süs niteliğindeki rakamlar için: zeminde 3.2:1 (WCAG büyük metin sınırı 3:1). */
+  --ink-faint: #7d8aa0;
   --paper: #f3f5f8;
   --sheet: #ffffff;
   --rule: #c9d2de;

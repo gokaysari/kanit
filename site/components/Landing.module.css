@@ -5,6 +5,26 @@
   padding-right: 24px;
 }
 
+.skip {
+  position: absolute;
+  left: 16px;
+  top: -100px;
+  z-index: 10;
+  background: var(--ink);
+  color: #fff;
+  font-weight: 600;
+  padding: 10px 16px;
+  border-radius: 4px;
+}
+
+.skip:focus {
+  top: 16px;
+}
+
+main:focus {
+  outline: none;
+}
+
 .top {
   display: flex;
   align-items: center;
@@ -116,7 +136,7 @@
   content: counter(step);
   display: block;
   font: 700 44px/1 var(--cond);
-  color: var(--rule);
+  color: var(--ink-faint);
   margin-bottom: 10px;
 }
 

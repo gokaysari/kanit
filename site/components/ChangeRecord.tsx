@@ -13,10 +13,16 @@ export function ChangeRecord({ record }: { record: Dictionary["record"] }) {
   const id = useId();
   const round = record.rounds[active];
 
+  // WAI-ARIA sekme deseni: ok tuşları dolaşır, Home/End uçlara gider.
   function onKeyDown(event: KeyboardEvent) {
-    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
-    const step = event.key === "ArrowRight" ? 1 : record.rounds.length - 1;
-    const next = (active + step) % record.rounds.length;
+    const count = record.rounds.length;
+    let next: number;
+    if (event.key === "ArrowRight") next = (active + 1) % count;
+    else if (event.key === "ArrowLeft") next = (active + count - 1) % count;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = count - 1;
+    else return;
+    event.preventDefault();
     setActive(next);
     tabs.current[next]?.focus();
   }
@@ -28,7 +34,7 @@ export function ChangeRecord({ record }: { record: Dictionary["record"] }) {
         <p>{record.request}</p>
       </div>
 
-      <div className={styles.tabs} role="tablist" onKeyDown={onKeyDown}>
+      <div className={styles.tabs} role="tablist" aria-label={record.tablistLabel} onKeyDown={onKeyDown}>
         {record.rounds.map((r, i) => (
           <button
             key={r.tab}
@@ -55,7 +61,8 @@ export function ChangeRecord({ record }: { record: Dictionary["record"] }) {
         id={`${id}-panel`}
         aria-labelledby={`${id}-tab-${active}`}
       >
-        <pre className={styles.diff}>
+        {/* Dar ekranda yatay kayar; klavyeyle de kaydırılabilsin diye odaklanabilir. */}
+        <pre className={styles.diff} tabIndex={0} role="region" aria-label={record.diffLabel}>
           {ACL_BEFORE.join("\n") + "\n"}
           <span className={round.accepted ? styles.addOk : styles.addNo}>{round.addedLine}</span>
           {ACL_AFTER.join("\n")}
