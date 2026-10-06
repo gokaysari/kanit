@@ -42,3 +42,23 @@ cd site && npm run typecheck && npm run build
 - Commit'ler `gokaysari <gokaysari999@gmail.com>` kimliğiyle atılır (bu klonda yerel olarak ayarlı). Başka kimlik kullanma.
 - Claude ortak yazar olarak eklenir: `Co-Authored-By: Claude <noreply@anthropic.com>`.
 - `main`'e force-push yapma. CI (`.github/workflows/ci.yml`) her push'ta Batfish testlerini ve site derlemesini koşar; kırmızıyken yeni iş ekleme.
+
+## Ajanlar
+
+Her yol haritası maddesinin `.claude/agents/` altında kendi ajanı var. Ana oturum işi ilgili ajana verir, kendisi yapmaz; ajanlar push etmez.
+
+| Madde | Ajan | Not |
+|---|---|---|
+| 1 | `canli-yol` | API anahtarı gerekir |
+| 2 | `niyet-kontrolleri` | 1'den sonra |
+| 3 | `yan-etki-kapisi` | 2'den sonra |
+| 4 | `degerlendirme` | ayrı worktree; anlamlı sonuç için 1-3 bitmiş olmalı |
+| 5 | `ag-kapsami` | ayrı worktree |
+| 6 | `pr-botu` | ayrı worktree |
+| 7 | `saglamlik` | çekirdek dosyalara dokunur; 1-3 ile aynı anda çalıştırma |
+| 8 | `site` | ayrı worktree |
+| - | `denetci` | salt okunur; her madde kapanmadan önce |
+
+- 1, 2, 3 ve 7 aynı çekirdek dosyaları (`models.py`, `verifier.py`, `loop.py`) değiştirir; sırayla çalıştır.
+- Worktree'de çalışan ajanlar (4, 5, 6, 8) birbirleriyle ve çekirdek işlerle aynı anda koşabilir. Yeni worktree'de `.venv` yoktur; önce `make setup` gerekir. Bitince dalı ana oturum birleştirir.
+- Bir madde, `denetci` "ölçüt sağlandı" demeden kapatılmaz ve push edilmez. Kapanınca `docs/yol-haritasi.md` güncellenir.
