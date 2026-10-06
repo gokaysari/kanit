@@ -38,3 +38,19 @@ jobs:
             --scripted examples/acme/scripted/01-fazla-genis.json examples/acme/scripted/02-dogru.json
           cat kanit-rapor.md >> "$GITHUB_STEP_SUMMARY"
           python .github/annotate.py kanit-rapor.md notice rapor
+
+  site:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build

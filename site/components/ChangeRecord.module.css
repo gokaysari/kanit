@@ -1,0 +1,152 @@
+.record {
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  box-shadow: 0 18px 40px -24px rgba(21, 34, 56, 0.45);
+  overflow: hidden;
+}
+
+.request {
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.request small {
+  display: block;
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-bottom: 4px;
+}
+
+.request p {
+  margin: 0;
+  font-weight: 500;
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--rule);
+}
+
+.tabs button {
+  flex: 1;
+  font: 500 15px/1 var(--sans);
+  color: var(--ink-soft);
+  background: var(--paper);
+  border: 0;
+  border-right: 1px solid var(--rule);
+  padding: 14px 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tabs button:last-child {
+  border-right: 0;
+}
+
+.tabs button[aria-selected="true"] {
+  background: var(--sheet);
+  color: var(--ink);
+}
+
+.tabs b {
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+.ok {
+  color: var(--ok);
+}
+
+.no {
+  color: var(--no);
+}
+
+.panel {
+  padding: 18px 20px 20px;
+}
+
+.diff {
+  font: 400 13.5px/1.65 var(--mono);
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  background: var(--paper);
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+.addOk,
+.addNo {
+  display: block;
+}
+
+.addOk {
+  background: var(--ok-wash);
+  color: var(--ok);
+}
+
+.addNo {
+  background: var(--no-wash);
+  color: var(--no);
+}
+
+.checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 15px;
+}
+
+.checks li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.result {
+  font-weight: 600;
+}
+
+.pass .result {
+  color: var(--ok);
+}
+
+.fail .result {
+  color: var(--no);
+}
+
+.counter {
+  grid-column: 1 / -1;
+  font: 400 13.5px/1.5 var(--mono);
+  background: var(--no-wash);
+  color: var(--no);
+  padding: 8px 10px;
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+}
+
+.stamp {
+  margin-top: 16px;
+  display: inline-block;
+  font: 700 22px/1 var(--cond);
+  letter-spacing: 0.04em;
+  padding: 8px 14px;
+  border: 3px solid;
+  border-radius: 4px;
+  transform: rotate(-2deg);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .stamp {
+    animation: stamp 0.28s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  }
+
+  @keyframes stamp {
+    from {
+      transform: rotate(-2deg) scale(1.5);
+      opacity: 0;
+    }
+  }
+}

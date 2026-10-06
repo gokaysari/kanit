@@ -23,24 +23,18 @@ Erken prototip. Kapsam: Cisco IOS, erişim listesi değişiklikleri, örnek iki 
 
 ## Çalıştırma
 
+Gerekenler: Python 3.10+, Docker (Batfish için), site için Node 22.
+
 ```bash
-docker compose up -d                 # Batfish
-pip install -e ".[dev]"
+make setup     # Python ortamı
+make demo      # API anahtarı olmadan: fazla geniş öneri reddedilir, dar olan kabul edilir
+make test      # Batfish dahil tüm testler
 
-# API anahtarı olmadan, kayıtlı iki öneriyle (önce ret, sonra kabul):
-kanit plan "Kullanıcı ağından veritabanı sunucusuna (10.20.20.30) tcp/5432 aç" \
-  --snapshot examples/acme \
-  --scripted examples/acme/scripted/01-fazla-genis.json examples/acme/scripted/02-dogru.json
-
-# Claude ile:
 export ANTHROPIC_API_KEY=...
-kanit plan "Kullanıcı ağından veritabanı sunucusuna (10.20.20.30) tcp/5432 aç" \
-  --snapshot examples/acme
+make plan      # Claude ile; başka istek için: make plan INTENT="..."
 ```
 
-Çıkış kodu kabulde 0, rette 1. `--apply` kabul edilen değişikliği snapshot'a yazar; model `--model` ya da `KANIT_MODEL` ile seçilir.
-
-Testler: `pytest` (Batfish'li testler için `BATFISH_HOST=localhost pytest`).
+Rapor `kanit-rapor.md` dosyasına yazılır. Çıkış kodu kabulde 0, rette 1. Doğrudan komut: `kanit plan "<istek>" --snapshot <klasör>`; `--apply` kabul edilen değişikliği snapshot'a yazar, model `--model` ya da `KANIT_MODEL` ile seçilir.
 
 ## Snapshot düzeni
 
@@ -62,4 +56,13 @@ Bir akış kontrolü, bir akış kümesinin tamamının ulaşmasını (`reachabl
 
 ## Site
 
-`site/index.html` tek dosyalık tanıtım sayfasıdır (TR/EN). Ad, e-posta ve repo adresi yer tutucudur: dosyada `Kanıt`, `ORNEK-ALAN-ADI` ve `KULLANICI/REPO` aratıp değiştirin.
+`site/` altında Next.js (App Router, TypeScript) ile yazılmış tanıtım sitesi; Türkçe `/`, İngilizce `/en/`.
+
+```bash
+make site         # http://localhost:3000
+make site-build   # statik çıktı: site/out/
+```
+
+- Metinler `site/content/tr.ts` ve `site/content/en.ts` içinde.
+- Ad, alan adı, e-posta ve repo adresi yalnızca `site/site.config.ts` içinde. Alan adı ve e-posta hâlâ yer tutucu.
+- Çıktı tamamen statiktir; Vercel, Netlify, Cloudflare Pages ya da herhangi bir statik sunucuya konabilir.
