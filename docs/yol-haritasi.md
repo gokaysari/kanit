@@ -65,6 +65,7 @@ Başvuru ve pilot görüşmeleri için sayı gerekiyor.
 - Ürün adı, alan adı, e-posta: `site/site.config.ts` içinde hâlâ yer tutucu. "Demo isteyin" düğmesi geçersiz adrese gidiyor.
 - Yayın yeri (Vercel vb.), lisans dosyası, kısa demo videosu.
 - Bitti: site alan adında yayında, iletişim adresi çalışıyor.
+- Yapıldı (Ekim 2026, denetçi onaylı): paylaşım görseli (TR/EN, gerçek Batfish kaydından), demo kaydı için yer tutucu (`site.config.ts` → `demoVideo`), iki dilli 404 sayfası (Next `experimental.globalNotFound`), erişilebilirlik düzeltmeleri (axe 0 ihlal, 1280/390/320 px). Madde açık: kalanların hepsi yukarıdaki kararlara bağlı.
 
 ## Bilinen küçük eksikler
 
