@@ -302,6 +302,25 @@ def test_absolute_or_parent_snapshot_input_is_rejected(tmp_path, github, kind):
     assert "DOĞRULAMA ÇALIŞMADI" in comment["body"]
 
 
+def test_empty_snapshot_input_is_rejected(tmp_path, github):
+    pr = PullRequest(tmp_path)
+    pr.push("02-dogru.json")
+    run = run_action(pr, github, tmp_path, snapshot="")
+    assert run["failed"] and run["rc"] == 2
+    assert "snapshot girdisi boş" in run["log"]
+
+
+@pytest.mark.batfish
+@pytest.mark.skipif(not HOST, reason="BATFISH_HOST tanımlı değil")
+def test_snapshot_input_with_extra_slashes_is_normalized(tmp_path, github):
+    pr = PullRequest(tmp_path)
+    pr.push("02-dogru.json")
+    run = run_action(pr, github, tmp_path, snapshot="./examples//acme/")
+    assert not run["failed"] and run["rc"] == 0
+    assert run["ctx"]["steps.base.outputs.snapshot"] == "examples/acme"
+    assert "KABUL EDİLDİ" in github.comments[1]["body"]
+
+
 def test_comment_script_reports_missing_report_instead_of_staying_silent(tmp_path, github):
     """Araç çökerse (rapor yok) yorum yine düşer ve günlüğün sonunu gösterir."""
     log = tmp_path / "kanit.log"

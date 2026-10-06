@@ -50,6 +50,10 @@ runs:
       env:
         SNAPSHOT: ${{ inputs.snapshot }}
       run: |
+        if [ -z "$SNAPSHOT" ]; then
+          echo "::error::snapshot girdisi boş"
+          exit 2
+        fi
         case "/$SNAPSHOT/" in
           //*|*/../*)
             echo "::error::snapshot girdisi repo köküne göre göreli olmalı ve '..' içermemeli: '$SNAPSHOT'"
@@ -88,7 +92,7 @@ runs:
         PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
       run: |
         set -euo pipefail
-        snap="${SNAPSHOT#./}"; snap="${snap%/}"
+        snap="$(printf '%s' "$SNAPSHOT" | tr -s /)"; snap="${snap#./}"; snap="${snap%/}"
         base="$BASE_REF"
         if [ -z "$base" ]; then
           if git rev-parse -q --verify 'HEAD^2' >/dev/null; then

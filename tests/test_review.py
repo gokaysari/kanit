@@ -290,6 +290,31 @@ def test_absolute_candidate_with_symlinked_middle_component_is_rejected(tmp_path
     assert "sembolik bağlantı" in r.verdict.error and "a" in r.verdict.error
 
 
+@pytest.mark.parametrize("absolute", [True, False])
+def test_dotdot_through_symlink_is_rejected_and_leaks_nothing(tmp_path, absolute):
+    """ws/a2 -> disari/acme; 'a2/../b' fiziksel olarak disari/b'dir, metin olarak ws/b."""
+    disari = tmp_path / "disari"
+    make_snapshot(disari, "acme")
+    leak = make_snapshot(disari, "b")
+    core = leak / "configs" / "core.cfg"
+    core.write_text(core.read_text() + f"! {SECRET}\n")
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "a2").symlink_to(disari / "acme")
+    cand = f"{ws}/a2/../b" if absolute else "a2/../b"
+    out = tmp_path / "r.md"
+    proc = subprocess.run(
+        [sys.executable, "-m", "kanit.cli", "check", "--base", str(ACME),
+         "--candidate", cand, "--out", str(out), "--batfish-host", "127.0.0.1"],
+        cwd=ws, capture_output=True, text=True,
+    )
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    report = out.read_text()
+    assert "REDDEDİLDİ" in report and "'..' içeriyor" in report
+    for text in (proc.stdout, proc.stderr, report):
+        assert SECRET not in text
+
+
 @pytest.mark.parametrize("target", ["/proc/self/environ", "dosya"])
 def test_linked_config_content_never_reaches_any_output(tmp_path, target):
     """configs/x.cfg -> /proc/self/environ: ortamdaki anahtar rapora ve çıktıya düşmez.

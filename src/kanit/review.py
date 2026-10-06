@@ -98,16 +98,23 @@ def unsafe_paths(snapshot: Path) -> list[str]:
 
     PR'dan gelen bir bağlantı (ör. configs/x.cfg -> /proc/self/environ) okunursa
     snapshot dışındaki içerik rapora, PR yorumuna ya da modele gidebilir. Bu yüzden
-    hiçbir şey okunmadan önce reddedilir. Yol göreliyse ya da çalışma dizini altındaysa
-    (cwd'ye göre göreli hâle getirilerek) her bileşen denetlenir. Çalışma dizini dışındaki
-    mutlak yolda yalnızca son bileşen denetlenir (macOS'ta /var gibi sistem bağlantıları
-    yüzünden); eylem bu yüzden mutlak snapshot yolunu kabul etmez.
+    hiçbir şey okunmadan önce reddedilir.
+
+    - '..' bileşeni içeren yol (göreli ya da mutlak) doğrudan reddedilir: '..' metin
+      üzerinde çözülürse denetlenen yol ile fiziksel olarak okunan yol ayrışır.
+    - Göreli yolda ve çalışma dizini altındaki mutlak yolda (cwd'ye göre göreli hâle
+      getirilerek) yolun her bileşeni denetlenir.
+    - Çalışma dizini dışındaki mutlak yolda yalnızca son bileşen denetlenir (macOS'ta
+      /var gibi sistem bağlantıları yüzünden); eylem bu yüzden mutlak yolu kabul etmez.
+    - Kök altında configs/, içindeki her dosya ve policy.json denetlenir.
     """
+    if ".." in snapshot.parts:
+        return [f"{snapshot} ('..' içeriyor)"]
     found: list[str] = []
     walked = Path()
     if snapshot.is_absolute():
         try:
-            parts = Path(os.path.normpath(snapshot)).relative_to(Path.cwd()).parts
+            parts = snapshot.relative_to(Path.cwd()).parts
         except ValueError:
             parts = (str(snapshot),)
     else:
