@@ -17,8 +17,8 @@ niyet (düz dil) ──► Claude: değişiklik + niyet kontrolleri
 
 Erken prototip. Kapsam: Cisco IOS, erişim listesi değişiklikleri, örnek iki cihazlı ağ.
 
-- Birim testleri (döngü, düzenleme güvenliği, Claude mesaj akışı) yerelde geçiyor.
-- Batfish entegrasyon testi GitHub Actions'ta çalışır (`.github/workflows/ci.yml`).
+- Birim testleri (döngü, düzenleme güvenliği, Claude mesaj akışı) geçiyor.
+- Gerçek Batfish'e karşı uçtan uca test her push'ta GitHub Actions'ta koşuyor (`.github/workflows/ci.yml`).
 - Claude'lu canlı yol bir API anahtarıyla henüz denenmedi.
 
 ## Çalıştırma

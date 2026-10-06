@@ -219,8 +219,8 @@
           <span><span data-l="tr">Kullanıcılar veritabanı sunucusuna SSH yapamaz</span><span data-l="en">Users cannot SSH to the database server</span></span>
           <span class="res"><span data-l="tr">ihlal</span><span data-l="en">violated</span></span>
           <span class="counter">
-            <span data-l="tr">Karşı örnek: 10.10.10.0/24 → 10.20.20.30 tcp/22 artık ulaşıyor</span>
-            <span data-l="en">Counterexample: 10.10.10.0/24 → 10.20.20.30 tcp/22 now gets through</span>
+            <span data-l="tr">Karşı örnek: 10.10.10.0:49152 → 10.20.20.30:22 TCP (SYN) => DELIVERED_TO_SUBNET</span>
+            <span data-l="en">Counterexample: 10.10.10.0:49152 → 10.20.20.30:22 TCP (SYN) => DELIVERED_TO_SUBNET</span>
           </span>
         </li>
       </ul>
