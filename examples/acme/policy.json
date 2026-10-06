@@ -1,0 +1,29 @@
+{
+  "invariants": [
+    {
+      "name": "Kullanıcılar web sunucusuna HTTPS ile erişir",
+      "start": "@enter(core[GigabitEthernet0/1])",
+      "src": "10.10.10.0/24",
+      "dst": "10.20.20.10",
+      "protocol": "TCP",
+      "dst_ports": "443",
+      "expect": "reachable"
+    },
+    {
+      "name": "Internet sunucu ağına hiçbir şekilde erişemez",
+      "start": "@enter(edge[GigabitEthernet0/0])",
+      "src": "0.0.0.0/0",
+      "dst": "10.20.20.0/24",
+      "expect": "blocked"
+    },
+    {
+      "name": "Kullanıcılar veritabanı sunucusuna SSH yapamaz",
+      "start": "@enter(core[GigabitEthernet0/1])",
+      "src": "10.10.10.0/24",
+      "dst": "10.20.20.30",
+      "protocol": "TCP",
+      "dst_ports": "22",
+      "expect": "blocked"
+    }
+  ]
+}

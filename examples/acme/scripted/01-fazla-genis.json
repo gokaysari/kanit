@@ -1,0 +1,21 @@
+{
+  "summary": "Kullanıcı ağından veritabanı sunucusuna tüm IP trafiğine izin ver.",
+  "edits": [
+    {
+      "file": "core.cfg",
+      "old": " deny ip any any\n",
+      "new": " permit ip 10.10.10.0 0.0.0.255 host 10.20.20.30\n deny ip any any\n"
+    }
+  ],
+  "intent_checks": [
+    {
+      "name": "Kullanıcılar veritabanına tcp/5432 ile erişir",
+      "start": "@enter(core[GigabitEthernet0/1])",
+      "src": "10.10.10.0/24",
+      "dst": "10.20.20.30",
+      "protocol": "TCP",
+      "dst_ports": "5432",
+      "expect": "reachable"
+    }
+  ]
+}

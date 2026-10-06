@@ -1,0 +1,5 @@
+services:
+  batfish:
+    image: batfish/allinone
+    ports:
+      - "9996:9996"

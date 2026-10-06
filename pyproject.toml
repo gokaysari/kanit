@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kanit"
+version = "0.1.0"
+description = "Claude ağ değişikliğini yazar, Batfish canlıya çıkmadan doğrular."
+requires-python = ">=3.10"
+dependencies = ["anthropic>=1.0", "pybatfish>=2025.1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+kanit = "kanit.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+markers = ["batfish: çalışan bir Batfish servisi gerektirir (BATFISH_HOST)"]
