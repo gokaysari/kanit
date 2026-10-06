@@ -59,6 +59,18 @@ Her yol haritası maddesinin `.claude/agents/` altında kendi ajanı var. Ana ot
 | 8 | `site` | ayrı worktree |
 | - | `denetci` | salt okunur; her madde kapanmadan önce |
 
+Rol ajanları maddeler arasında çalışır; madde ajanlarının yerine geçmez, onlara tasarım, inceleme ve iş tanımı sağlar:
+
+| Rol | Ajan | Alan | Yazdığı yer |
+|---|---|---|---|
+| Kıdemli mühendis | `kidemli-muhendis-dogrulama` | doğrulama çekirdeği, kabul kuralı, Batfish anlamı (2, 3, 5, 7) | `src/kanit` çekirdeği, testler; ana ağaçta, çekirdek işlerle sırayla |
+| Kıdemli mühendis | `kidemli-muhendis-platform` | Claude API yolu, CLI, PR botu, CI, eval düzeneği (1, 4, 6, 7) | ayrı worktree |
+| Ürün uzmanı | `urun-uzmani` | kullanıcı, pilot, demo, rapor okunabilirliği, kabul kriterleri | yalnızca `docs/urun/`, ayrı worktree |
+| İş analisti | `is-analisti` | pazar, müşteri profili, değer modeli, fiyat hipotezi, başvuru taslağı | yalnızca `docs/is/`, ayrı worktree |
+
+- Çekirdeğe dokunan bir madde ajanının işi, denetçiden önce `kidemli-muhendis-dogrulama` tarafından incelenebilir; platform işleri için `kidemli-muhendis-platform`. İnceleme denetçinin yerine geçmez.
+- `urun-uzmani` ve `is-analisti` kod değiştirmez, karar vermez; seçenek ve gerekçe hazırlar, kararları `docs/*/kararlar.md` içinde Gökay'a bırakır. Uydurma görüşme, müşteri ya da kaynaksız sayı yazmazlar.
+
 - 1, 2, 3 ve 7 aynı çekirdek dosyaları (`models.py`, `verifier.py`, `loop.py`) değiştirir; sırayla çalıştır.
 - Worktree'de çalışan ajanlar (4, 5, 6, 8) birbirleriyle ve çekirdek işlerle aynı anda koşabilir. Yeni worktree'de `.venv` yoktur; önce `make setup` gerekir. Bitince dalı ana oturum birleştirir.
 - Bir madde, `denetci` "ölçüt sağlandı" demeden kapatılmaz ve push edilmez. Kapanınca `docs/yol-haritasi.md` güncellenir.
