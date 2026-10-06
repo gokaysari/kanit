@@ -1,0 +1,167 @@
+"""`kanit check` (model olmadan yalnızca doğrulama) için Batfish'siz birim testleri."""
+
+import argparse
+import json
+import shutil
+from pathlib import Path
+
+from kanit import cli, review
+from kanit.models import CheckResult, FlowCheck, Proposal, Verdict
+from kanit.snapshot import POLICY_FILE, apply_edits, read_configs
+
+ACME = Path(__file__).parent.parent / "examples" / "acme"
+SCRIPTED = ACME / "scripted"
+
+
+def make_snapshot(tmp_path: Path, name: str, scripted: str | None = None) -> Path:
+    """examples/acme kopyası; scripted verilirse o önerinin düzenlemeleri uygulanmış."""
+    dest = tmp_path / name
+    shutil.copytree(ACME, dest)
+    if scripted:
+        proposal = Proposal.from_dict(json.loads((SCRIPTED / scripted).read_text()))
+        for fname, text in apply_edits(read_configs(dest), proposal).items():
+            (dest / "configs" / fname).write_text(text)
+    return dest
+
+
+class RecordingVerifier:
+    """'permit ip 10.10.10.0' içeren adayı SSH değişmezini ihlal ediyor sayar."""
+
+    def __init__(self, fail_with: Exception | None = None):
+        self.calls: list[tuple] = []
+        self.fail_with = fail_with
+
+    def verify(self, base, candidate, invariants, intent_checks):
+        layout = sorted(p.name for p in candidate.iterdir())
+        self.calls.append((layout, candidate, list(invariants), list(intent_checks)))
+        if self.fail_with:
+            raise self.fail_with
+        text = (candidate / "configs" / "core.cfg").read_text()
+        broad = "permit ip 10.10.10.0" in text
+        v = Verdict()
+        for inv in invariants:
+            bad = broad and inv.dst_ports == "22"
+            v.checks.append(CheckResult(inv, "invariant", not bad, "akış|`x`" if bad else None))
+        return v
+
+
+def test_narrow_change_is_accepted(tmp_path):
+    verifier = RecordingVerifier()
+    r = review.run_check(ACME, make_snapshot(tmp_path, "pr", "02-dogru.json"), verifier)
+    assert r.accepted and r.exit_code == 0
+    (layout, _, invariants, intent), = verifier.calls
+    assert len(invariants) == 3 and intent == []
+    # Doğrulanan dizinde yalnızca configs/ var: raporlanan fark ile doğrulanan aynı.
+    assert layout == ["configs"]
+    md = review.render(r)
+    assert "KABUL EDİLDİ" in md and "+ permit tcp 10.10.10.0" in md
+    assert "3 değişmez, 3 kanıtlandı, 0 ihlal" in md
+
+
+def test_broad_change_is_rejected_with_counterexample(tmp_path):
+    r = review.run_check(ACME, make_snapshot(tmp_path, "pr", "01-fazla-genis.json"), RecordingVerifier())
+    assert not r.accepted and r.exit_code == 1
+    md = review.render(r)
+    assert "REDDEDİLDİ" in md and "**ihlal**" in md
+    # Karşı örnekteki '|' ve ters tırnak tabloyu bozmamalı.
+    row = next(line for line in md.splitlines() if "SSH yapamaz" in line)
+    assert row.count(" | ") == 2 and "`` akış¦`x` ``" in row
+
+
+def test_no_change_skips_batfish(tmp_path):
+    verifier = RecordingVerifier()
+    r = review.run_check(ACME, make_snapshot(tmp_path, "pr"), verifier)
+    assert r.accepted and r.exit_code == 0 and r.verdict is None
+    assert verifier.calls == []
+    assert "YAPILANDIRMA DEĞİŞMEDİ" in review.render(r)
+
+
+def test_dropping_an_invariant_in_the_pr_does_not_weaken_the_check(tmp_path):
+    """PR hem geniş kural ekleyip hem de SSH değişmezini silerse yine reddedilir."""
+    cand = make_snapshot(tmp_path, "pr", "01-fazla-genis.json")
+    policy = json.loads((cand / POLICY_FILE).read_text())
+    policy["invariants"] = [i for i in policy["invariants"] if i.get("dst_ports") != "22"]
+    (cand / POLICY_FILE).write_text(json.dumps(policy))
+
+    r = review.run_check(ACME, cand, RecordingVerifier())
+    assert not r.accepted and r.exit_code == 1
+    assert [c.name for c in r.dropped_invariants] == ["Kullanıcılar veritabanı sunucusuna SSH yapamaz"]
+    md = review.render(r)
+    assert "**Uyarı:**" in md and "SSH yapamaz" in md
+
+
+def test_invariant_added_in_pr_is_also_checked(tmp_path):
+    cand = make_snapshot(tmp_path, "pr")
+    policy = json.loads((cand / POLICY_FILE).read_text())
+    extra = {
+        "name": "Kullanıcılar veritabanına 5432 ile erişir",
+        "start": "@enter(core[GigabitEthernet0/1])",
+        "src": "10.10.10.0/24",
+        "dst": "10.20.20.30",
+        "protocol": "TCP",
+        "dst_ports": "5432",
+        "expect": "reachable",
+    }
+    policy["invariants"].append(extra)
+    (cand / POLICY_FILE).write_text(json.dumps(policy))
+
+    verifier = RecordingVerifier()
+    r = review.run_check(ACME, cand, verifier)
+    (_, _, invariants, _), = verifier.calls
+    assert len(invariants) == 4 and invariants[-1] == FlowCheck.from_dict(extra)
+    assert "(bu PR'da eklendi)" in review.render(r)
+
+
+def test_broken_candidate_policy_is_rejected_not_ignored(tmp_path):
+    cand = make_snapshot(tmp_path, "pr", "02-dogru.json")
+    (cand / POLICY_FILE).write_text('{"invariants": [{"name": "eksik"}]}')
+    verifier = RecordingVerifier()
+    r = review.run_check(ACME, cand, verifier)
+    assert r.exit_code == 1 and verifier.calls == []
+    assert "PR'daki snapshot okunamadı" in review.render(r)
+
+
+def test_missing_base_snapshot_is_an_error(tmp_path):
+    r = review.run_check(tmp_path / "yok", ACME, RecordingVerifier())
+    assert r.exit_code == 2 and not r.accepted
+    assert "DOĞRULAMA ÇALIŞMADI" in review.render(r)
+
+
+def test_verifier_failure_is_reported_as_error(tmp_path):
+    verifier = RecordingVerifier(fail_with=ConnectionError("bağlantı reddedildi"))
+    r = review.run_check(ACME, make_snapshot(tmp_path, "pr", "02-dogru.json"), verifier)
+    assert r.exit_code == 2 and not r.accepted
+    md = review.render(r)
+    assert "DOĞRULAMA ÇALIŞMADI" in md and "bağlantı reddedildi" in md
+
+
+def test_diff_fence_survives_backticks_in_config(tmp_path):
+    cand = make_snapshot(tmp_path, "pr")
+    core = cand / "configs" / "core.cfg"
+    core.write_text(core.read_text().replace("description USERS", "description ```x```"))
+    md = review.render(review.run_check(ACME, cand, RecordingVerifier()))
+    assert "````diff" in md
+
+
+def test_cli_check_subcommand(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        review, "main", lambda args: calls.append((args.base, args.candidate)) or 7
+    )
+    rc = cli.main(["check", "--base", "a", "--candidate", "b"])
+    assert rc == 7 and calls == [(Path("a"), Path("b"))]
+
+
+def test_check_main_writes_report_and_exit_code(tmp_path, capsys):
+    out = tmp_path / "rapor.md"
+    args = cli_args(ACME, make_snapshot(tmp_path, "pr", "01-fazla-genis.json"), out)
+    assert review.main(args, verifier=RecordingVerifier()) == 1
+    assert "REDDEDİLDİ" in out.read_text()
+    assert "DEĞİŞMEZ İHLALİ" in capsys.readouterr().out
+
+
+def cli_args(base, cand, out):
+    p = argparse.ArgumentParser()
+    review.add_subparser(p.add_subparsers(dest="cmd"))
+    return p.parse_args(["check", "--base", str(base), "--candidate", str(cand), "--out", str(out)])
+
