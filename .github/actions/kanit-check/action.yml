@@ -6,7 +6,10 @@ description: >-
 
 inputs:
   snapshot:
-    description: "configs/ ve policy.json içeren klasör (repo köküne göre), ör. examples/acme"
+    description: >-
+      configs/ ve policy.json içeren klasör, repo köküne göre göreli (ör. examples/acme).
+      Mutlak yol ya da '..' içeren yol reddedilir: yolun her bileşeninin sembolik bağlantı
+      olmadığı ancak göreli yolda denetlenebilir.
     required: true
   base-ref:
     description: >-
@@ -42,6 +45,17 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Girdileri denetle
+      shell: bash
+      env:
+        SNAPSHOT: ${{ inputs.snapshot }}
+      run: |
+        case "/$SNAPSHOT/" in
+          //*|*/../*)
+            echo "::error::snapshot girdisi repo köküne göre göreli olmalı ve '..' içermemeli: '$SNAPSHOT'"
+            exit 2 ;;
+        esac
+
     - if: inputs.python-version != ''
       uses: actions/setup-python@v6
       with:

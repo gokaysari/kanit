@@ -166,7 +166,8 @@ def substitute(value: str, ctx: dict[str, str]) -> str:
     return EXPR.sub(lambda m: str(evaluate(m.group(1), ctx)), str(value))
 
 
-def run_action(pr: PullRequest, github: FakeGitHub, tmp: Path, head_repo: str = REPO):
+def run_action(pr: PullRequest, github: FakeGitHub, tmp: Path, head_repo: str = REPO,
+               snapshot: str = "examples/acme"):
     action = yaml.safe_load((ACTION_DIR / "action.yml").read_text())
     ctx = {
         "github.token": TOKEN,
@@ -177,7 +178,7 @@ def run_action(pr: PullRequest, github: FakeGitHub, tmp: Path, head_repo: str = 
         "github.event.pull_request.head.sha": pr.head_sha,
         "github.event.pull_request.head.repo.full_name": head_repo,
     }
-    with_ = {"snapshot": "examples/acme", "batfish-host": HOST}
+    with_ = {"snapshot": snapshot, "batfish-host": HOST or "localhost"}
     for name, spec in action["inputs"].items():
         ctx[f"inputs.{name}"] = substitute(with_.get(name, spec.get("default", "")), ctx)
 
@@ -276,6 +277,29 @@ def test_fork_pr_gets_no_comment_but_still_turns_red(tmp_path, github):
     assert github.requests == [] and github.comments == {}
     assert "Fork PR'ı: yorum yazılmadı" in run["log"]
     assert "REDDEDİLDİ" in run["summary"]
+
+
+@pytest.mark.parametrize("kind", ["mutlak", "ust", "ara"])
+def test_absolute_or_parent_snapshot_input_is_rejected(tmp_path, github, kind):
+    """Mutlak ya da '..' içeren snapshot girdisi: Batfish'e gelmeden kırmızı (2).
+
+    'mutlak' durumda yolun ara bileşeni gerçekten bir sembolik bağlantıdır (dış repo
+    `${{ github.workspace }}/a/acme` yazsa ve 'a' snapshot dışını gösterse).
+    """
+    pr = PullRequest(tmp_path)
+    pr.push("02-dogru.json")
+    outside = tmp_path / "disari"
+    shutil.copytree(ACME, outside / "acme")
+    (pr.repo / "a").symlink_to(outside)
+    snapshot = {"mutlak": f"{pr.repo}/a/acme", "ust": "../disari/acme",
+                "ara": "examples/../a/acme"}[kind]
+    run = run_action(pr, github, tmp_path, snapshot=snapshot)
+    assert run["failed"] and run["rc"] == 2
+    assert run["ran"][0] == "Girdileri denetle"
+    assert "Doğrula (model çağrısı yok)" not in run["ran"]
+    assert "göreli olmalı" in run["log"]
+    (comment,) = github.comments.values()
+    assert "DOĞRULAMA ÇALIŞMADI" in comment["body"]
 
 
 def test_comment_script_reports_missing_report_instead_of_staying_silent(tmp_path, github):

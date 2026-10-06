@@ -277,6 +277,19 @@ def test_symlinked_snapshot_root_is_rejected(tmp_path, monkeypatch):
     assert r.exit_code == 1 and "examples/acme" in r.verdict.error
 
 
+def test_absolute_candidate_with_symlinked_middle_component_is_rejected(tmp_path, monkeypatch):
+    """<cwd>/a/acme ve 'a' bağlantı: mutlak yol cwd'ye göre göreli denetlenir."""
+    outside = make_snapshot(tmp_path / "disari", "acme", "02-dogru.json").parent
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    monkeypatch.chdir(ws)
+    Path("a").symlink_to(outside)
+    verifier = RecordingVerifier()
+    r = review.run_check(ACME, Path.cwd() / "a" / "acme", verifier)
+    assert r.exit_code == 1 and verifier.calls == []
+    assert "sembolik bağlantı" in r.verdict.error and "a" in r.verdict.error
+
+
 @pytest.mark.parametrize("target", ["/proc/self/environ", "dosya"])
 def test_linked_config_content_never_reaches_any_output(tmp_path, target):
     """configs/x.cfg -> /proc/self/environ: ortamdaki anahtar rapora ve çıktıya düşmez.
