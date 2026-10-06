@@ -40,8 +40,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.scripted:
         proposer = ScriptedProposer(args.scripted)
     else:
-        if not os.environ.get("ANTHROPIC_API_KEY"):
-            print("ANTHROPIC_API_KEY tanımlı değil (ya da --scripted kullan).", file=sys.stderr)
+        if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
+            print(
+                "ANTHROPIC_API_KEY tanımlı değil. Anahtarı ortam değişkeni olarak ver "
+                "ya da anahtarsız demo için --scripted kullan.",
+                file=sys.stderr,
+            )
             return 2
         proposer = ClaudeProposer(
             args.intent,
@@ -59,10 +63,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     args.out.write_text(report.render(result))
     for n, r in enumerate(result.rounds, 1):
-        print(f"Tur {n}: {'KABUL' if r.verdict.accepted else 'RET'}")
+        spent = f" ({r.usage.describe()})" if r.usage.calls else ""
+        print(f"Tur {n}: {'KABUL' if r.verdict.accepted else 'RET'}{spent}")
         if not r.verdict.accepted:
             print("  " + r.verdict.feedback().replace("\n", "\n  "))
+    if result.usage.calls:
+        print(f"Toplam model kullanımı ({result.model}): {result.usage.describe()}")
     print(f"Rapor: {args.out}")
+    if result.error:
+        print(f"Durdu: {result.error}", file=sys.stderr)
+        return 2
 
     if result.accepted and args.apply:
         for name, text in result.final.candidate_configs.items():

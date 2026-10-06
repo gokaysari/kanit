@@ -49,3 +49,40 @@ def test_unchanged_baseline_satisfies_invariants():
         (c.check.name, c.counterexample) for c in verdict.checks if not c.passed
     ]
     assert verdict.changed_flows == []
+
+
+def test_claude_path_feeds_batfish_counterexample_back_and_counts_tokens():
+    """ClaudeProposer'ın döngüsü gerçek Batfish'le: ret gerekçesi modele geri gider."""
+    import json
+    from types import SimpleNamespace
+
+    from kanit.proposer import ClaudeProposer
+    from kanit.snapshot import read_configs, read_invariants
+
+    inputs = [
+        json.loads((ACME / "scripted" / name).read_text())
+        for name in ("01-fazla-genis.json", "02-dogru.json")
+    ]
+    requests = []
+
+    def create(**kwargs):
+        requests.append(list(kwargs["messages"]))
+        n = len(requests)
+        block = SimpleNamespace(
+            type="tool_use", id=f"tu_{n}", name="propose_change", input=inputs[n - 1]
+        )
+        usage = SimpleNamespace(input_tokens=1500, output_tokens=300)
+        return SimpleNamespace(content=[block], stop_reason="tool_use", usage=usage)
+
+    client = SimpleNamespace(messages=SimpleNamespace(create=create))
+    proposer = ClaudeProposer(
+        "db aç", read_configs(ACME), read_invariants(ACME), model="m", client=client
+    )
+    result = loop.run("db aç", ACME, proposer, BatfishVerifier(HOST))
+
+    assert [r.verdict.accepted for r in result.rounds] == [False, True]
+    feedback = requests[1][-1]["content"][0]["content"]
+    assert "DEĞİŞMEZ İHLALİ" in feedback and "SSH" in feedback
+    assert "->10.20.20.30:22 TCP" in feedback, feedback
+    assert result.usage.calls == 2 and result.usage.input_tokens == 3000
+    assert "2 çağrı, 3.000 giriş + 600 çıkış token" in report.render(result)

@@ -3,7 +3,7 @@ PY := .venv/bin
 INTENT ?= Kullanıcı ağından veritabanı sunucusuna (10.20.20.30) tcp/5432 aç
 SNAPSHOT ?= examples/acme
 
-.PHONY: setup batfish test demo plan site site-build
+.PHONY: setup batfish test live-test demo plan site site-build
 
 setup:            ## Python ortamını kur
 	python3 -m venv .venv
@@ -18,6 +18,9 @@ batfish:          ## Batfish'i Docker'da başlat ve hazır olmasını bekle
 
 test: batfish     ## Tüm testler (Batfish dahil)
 	BATFISH_HOST=localhost $(PY)/pytest -q
+
+live-test: batfish ## Gerçek Claude + Batfish (ANTHROPIC_API_KEY gerekir, ücretli)
+	BATFISH_HOST=localhost $(PY)/pytest -q -s -m claude
 
 demo: batfish     ## API anahtarı olmadan: önce ret, sonra kabul
 	$(PY)/kanit plan "$(INTENT)" --snapshot $(SNAPSHOT) \
