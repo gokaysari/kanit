@@ -27,7 +27,8 @@ jobs:
             sleep 5
           done
           exit 1
-      - run: pytest -v -s -rfE --tb=short 2>&1 | tee pytest.txt
+      - shell: bash
+        run: pytest -v -s -rfE --tb=short 2>&1 | tee pytest.txt
       - if: failure()
         run: python .github/annotate.py pytest.txt
       - name: Demo raporu üret
@@ -36,3 +37,4 @@ jobs:
             --snapshot examples/acme \
             --scripted examples/acme/scripted/01-fazla-genis.json examples/acme/scripted/02-dogru.json
           cat kanit-rapor.md >> "$GITHUB_STEP_SUMMARY"
+          python .github/annotate.py kanit-rapor.md notice rapor
