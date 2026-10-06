@@ -15,7 +15,12 @@ export const en: Dictionary = {
     description:
       "Claude writes the network change and Batfish formally verifies it before it goes live.",
   },
-  nav: { how: "How it works", limits: "Limits" },
+  og: {
+    alt: "Kanıt: prove a network change before it goes live. In the example record, a narrow access-list line passes Batfish verification and is accepted.",
+    label: "Example change record, round 2",
+  },
+  skipLink: "Skip to content",
+  nav: { label: "Page sections", how: "How it works", demo: "Demo", limits: "Limits" },
   hero: {
     title: "Prove a network change before it goes live.",
     lede: "Describe the change in plain language. Claude writes the configuration change and Batfish verifies it against a model of your network. You only see changes that passed.",
@@ -29,6 +34,8 @@ export const en: Dictionary = {
     proved: "proved",
     violated: "violated",
     counterexample: "Counterexample",
+    tablistLabel: "Verification rounds",
+    diffLabel: "Change to the access list",
     rounds: [
       {
         tab: "Round 1",
@@ -73,6 +80,13 @@ export const en: Dictionary = {
       },
     ],
   },
+  demo: {
+    title: "Short demo",
+    placeholder: "The demo recording is not ready yet.",
+    body: "Until it is, you can run the same flow on your own machine: the overly broad proposal is rejected with a counterexample and the narrow one is accepted. Docker and Python are enough; no API key needed.",
+    commandLabel: "Command",
+    setupLink: "Setup steps",
+  },
   proves: {
     title: "What it proves",
     items: [
@@ -97,4 +111,9 @@ export const en: Dictionary = {
     cta: "Write to us about a pilot",
   },
   footer: { builtOn: "Built on open-source", and: "and Claude.", source: "Source code" },
+  notFound: {
+    title: "Page not found",
+    body: "The address you are looking for does not exist on this site.",
+    home: "Go to the home page",
+  },
 };

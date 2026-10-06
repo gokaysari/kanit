@@ -2,6 +2,7 @@ import type { Dictionary } from "@/content/types";
 import { site } from "@/site.config";
 
 import { ChangeRecord } from "./ChangeRecord";
+import { DemoSlot } from "./DemoSlot";
 import styles from "./Landing.module.css";
 
 function mailto(subject: string) {
@@ -9,23 +10,33 @@ function mailto(subject: string) {
 }
 
 export function Landing({ dict }: { dict: Dictionary }) {
+  const otherLang = dict.lang === "tr" ? "en" : "tr";
   return (
     <>
+      <a className={styles.skip} href="#main">
+        {dict.skipLink}
+      </a>
       <header className={`${styles.wrap} ${styles.top}`}>
         <div className={styles.mark}>
           {site.name}
           <span>.</span>
         </div>
-        <nav className={styles.nav}>
+        <nav className={styles.nav} aria-label={dict.nav.label}>
           <a href="#how">{dict.nav.how}</a>
+          <a href="#demo">{dict.nav.demo}</a>
           <a href="#limits">{dict.nav.limits}</a>
-          <a className={styles.lang} href={dict.otherLang.href} hrefLang={dict.lang === "tr" ? "en" : "tr"}>
+          <a
+            className={styles.lang}
+            href={dict.otherLang.href}
+            hrefLang={otherLang}
+            lang={otherLang}
+          >
             {dict.otherLang.label}
           </a>
         </nav>
       </header>
 
-      <main>
+      <main id="main" tabIndex={-1}>
         <div className={`${styles.wrap} ${styles.hero}`}>
           <div>
             <h1 className={styles.title}>{dict.hero.title}</h1>
@@ -49,6 +60,15 @@ export function Landing({ dict }: { dict: Dictionary }) {
                 </li>
               ))}
             </ol>
+          </div>
+        </section>
+
+        <section className={styles.band} id="demo" aria-labelledby="demo-title">
+          <div className={styles.wrap}>
+            <h2 className={styles.heading} id="demo-title">
+              {dict.demo.title}
+            </h2>
+            <DemoSlot demo={dict.demo} />
           </div>
         </section>
 

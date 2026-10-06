@@ -15,7 +15,12 @@ export const tr: Dictionary = {
     description:
       "Claude ağ değişikliğini yazar, Batfish canlıya çıkmadan önce biçimsel olarak doğrular.",
   },
-  nav: { how: "Nasıl çalışır", limits: "Sınırlar" },
+  og: {
+    alt: "Kanıt: ağ değişikliğini canlıya çıkmadan kanıtlayın. Örnek kayıtta dar erişim listesi satırı Batfish doğrulamasından geçip kabul ediliyor.",
+    label: "Örnek değişiklik kaydı, tur 2",
+  },
+  skipLink: "İçeriğe geç",
+  nav: { label: "Sayfa bölümleri", how: "Nasıl çalışır", demo: "Demo", limits: "Sınırlar" },
   hero: {
     title: "Ağ değişikliğini canlıya çıkmadan kanıtlayın.",
     lede: "Ne istediğinizi düz dille yazın. Claude yapılandırma değişikliğini üretir, Batfish ağınızın modelinde doğrular. Önünüze yalnızca doğrulamadan geçen değişiklik gelir.",
@@ -29,6 +34,8 @@ export const tr: Dictionary = {
     proved: "kanıtlandı",
     violated: "ihlal",
     counterexample: "Karşı örnek",
+    tablistLabel: "Doğrulama turları",
+    diffLabel: "Erişim listesindeki değişiklik",
     rounds: [
       {
         tab: "Tur 1",
@@ -73,6 +80,13 @@ export const tr: Dictionary = {
       },
     ],
   },
+  demo: {
+    title: "Kısa demo",
+    placeholder: "Demo kaydı henüz hazır değil.",
+    body: "Kayıt eklenene kadar aynı akışı kendi makinenizde çalıştırabilirsiniz: fazla geniş öneri karşı örnekle reddedilir, dar olan kabul edilir. Docker ve Python yeterli, API anahtarı gerekmez.",
+    commandLabel: "Komut",
+    setupLink: "Kurulum adımları",
+  },
   proves: {
     title: "Neyi kanıtlar",
     items: [
@@ -97,4 +111,9 @@ export const tr: Dictionary = {
     cta: "Pilot için yazın",
   },
   footer: { builtOn: "Açık kaynak", and: "ve Claude üzerine kuruludur.", source: "Kaynak kod" },
+  notFound: {
+    title: "Sayfa bulunamadı",
+    body: "Aradığınız adres bu sitede yok.",
+    home: "Ana sayfaya dönün",
+  },
 };
