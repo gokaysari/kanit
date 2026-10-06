@@ -59,6 +59,34 @@ jobs:
           ref: ${{ steps.pr.outputs.head_sha }}
           path: .kanit-pr
           persist-credentials: false
+
+      # Sır kullanan adımdan ve model çağrısından önce: PR snapshot'ında sembolik bağlantı
+      # (ör. configs/x.cfg -> /proc/self/environ) varsa dur. Değişmezler PR'dan değil
+      # varsayılan daldan alınır; PR policy.json'u gevşetemez.
+      - name: PR snapshot'ını denetle ve hazırla
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; echo "PR snapshot'ı reddedildi: $1" > kanit-plan.log; exit 1; }
+          snap=".kanit-pr/$SNAPSHOT"
+          walked=".kanit-pr"
+          IFS=/ read -r -a parts <<< "$SNAPSHOT"
+          for part in "${parts[@]}"; do
+            [ -n "$part" ] || continue
+            walked="$walked/$part"
+            if [ -L "$walked" ]; then fail "$walked sembolik bağlantı"; fi
+          done
+          [ -d "$snap" ] || fail "$snap bulunamadı"
+          root="$(cd .kanit-pr && pwd -P)"
+          real="$(cd "$snap" && pwd -P)"
+          case "$real/" in "$root/"*) ;; *) fail "$snap PR deposunun dışına çıkıyor" ;; esac
+          links="$(find "$snap" -type l | tr '\n' ' ')"
+          if [ -n "$links" ]; then fail "sembolik bağlantı içeriyor: $links"; fi
+          if [ -f "$SNAPSHOT/policy.json" ]; then
+            # Hedef bir bağlantıysa cp onun gösterdiği dosyaya yazardı; önce sil.
+            rm -f "$snap/policy.json"
+            cp "$SNAPSHOT/policy.json" "$snap/policy.json"
+          fi
+
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -81,10 +109,6 @@ jobs:
         run: |
           first="$(printf '%s\n' "$COMMENT" | head -n1 | tr -d '\r')"
           intent="${first#/kanit plan }"
-          # Değişmezler PR'dan değil varsayılan daldan: PR policy.json'u gevşetemesin.
-          if [ -f "$SNAPSHOT/policy.json" ]; then
-            cp "$SNAPSHOT/policy.json" ".kanit-pr/$SNAPSHOT/policy.json"
-          fi
           set +e
           kanit plan "$intent" --snapshot ".kanit-pr/$SNAPSHOT" --out kanit-plan.md 2>&1 | tee kanit-plan.log
           echo "exit-code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"

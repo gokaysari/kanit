@@ -20,7 +20,9 @@ inputs:
     description: "Raporu PR yorumu olarak yaz (fork PR'larında yazılmaz, yalnızca iş özetine düşer)"
     default: "true"
   github-token:
-    description: Yorum yazmak için belirteç; iş akışında pull-requests write izni gerekir
+    description: >-
+      Yorum yazmak için belirteç; iş akışında pull-requests write izni gerekir. Yalnızca
+      github-actions[bot] yorumu güncellenir; başka bir belirteçle her çalışma yeni yorum açar.
     default: ${{ github.token }}
   python-version:
     description: Kurulacak Python; boş bırakılırsa runner'daki python kullanılır

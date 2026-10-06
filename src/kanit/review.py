@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import json
 import os
 import re
 import sys
@@ -92,18 +93,83 @@ def _read_policy(snapshot: Path) -> str:
     return path.read_text() if path.exists() else ""
 
 
+def unsafe_paths(snapshot: Path) -> list[str]:
+    """Snapshot ağacındaki sembolik bağlantılar ve kök dışına çıkan yollar.
+
+    PR'dan gelen bir bağlantı (ör. configs/x.cfg -> /proc/self/environ) okunursa
+    snapshot dışındaki içerik rapora, PR yorumuna ya da modele gidebilir. Bu yüzden
+    hiçbir şey okunmadan önce reddedilir. Göreli yolda her bileşen, mutlak yolda yalnızca
+    son bileşen denetlenir (macOS'ta /var gibi sistem bağlantıları yüzünden); eylem
+    göreli yol verir.
+    """
+    found: list[str] = []
+    walked = Path()
+    parts = snapshot.parts if not snapshot.is_absolute() else (str(snapshot),)
+    for part in parts:
+        walked = walked / part
+        if walked.is_symlink():
+            found.append(str(walked))
+    if found:
+        return found
+    root = snapshot.resolve()
+    cfg = snapshot / CONFIG_DIR
+    targets = [cfg, snapshot / POLICY_FILE]
+    if cfg.is_dir() and not cfg.is_symlink():
+        targets += sorted(cfg.iterdir())
+    for path in targets:
+        if path.is_symlink():
+            found.append(str(path))
+        elif path.exists() and not path.resolve().is_relative_to(root):
+            found.append(str(path))
+    return found
+
+
+_CHECK_FIELDS = ("name", "start", "dst", "expect", "src", "protocol", "dst_ports")
+
+
+def _field_type_errors(policy_text: str) -> list[str]:
+    """PR'daki değişmezlerde metin olmayan alanlar; Batfish'e gitmeden PR hatası sayılır."""
+    if not policy_text:
+        return []
+    errors = []
+    for n, item in enumerate(json.loads(policy_text).get("invariants", []), 1):
+        for key in _CHECK_FIELDS:
+            value = item.get(key)
+            if value is not None and not isinstance(value, str):
+                errors.append(
+                    f"{n}. değişmezde '{key}' metin olmalı, {type(value).__name__} verildi"
+                )
+    return errors
+
+
 def run_check(base: Path, candidate: Path, verifier: Verifier) -> Review:
     """Hedef daldaki değişmezlerle adayı doğrular. Kabul kuralı Verdict.accepted'dır."""
+    links = unsafe_paths(base)
+    if links:
+        return Review(
+            {}, {}, error=f"Hedef daldaki snapshot'ta sembolik bağlantı var: {', '.join(links)}"
+        )
     try:
         review = Review(read_configs(base), {}, base_policy=_read_policy(base))
         review.invariants = read_invariants(base)
     except _READ_ERRORS as exc:
         return Review({}, {}, error=f"Hedef daldaki snapshot okunamadı: {_why(exc)}")
 
+    links = unsafe_paths(candidate)
+    if links:
+        # Hiçbir şey okunmadan durulur; bağlantının hedefi rapora düşmez.
+        review.verdict = Verdict(
+            error="PR'daki snapshot sembolik bağlantı ya da snapshot dışına çıkan yol "
+            f"içeriyor; okunmadı: {', '.join(links)}"
+        )
+        return review
     try:
         review.cand_configs = read_configs(candidate)
         review.cand_policy = _read_policy(candidate)
         review.cand_invariants = cand_invariants = read_invariants(candidate)
+        type_errors = _field_type_errors(review.cand_policy)
+        if type_errors:
+            raise ProposalError("; ".join(type_errors))
     except _READ_ERRORS as exc:
         # PR'ın bozduğu snapshot reddedilir; doğrulanamayan değişiklik kabul edilmez.
         review.verdict = Verdict(error=f"PR'daki snapshot okunamadı: {_why(exc)}")
@@ -197,17 +263,20 @@ def render(review: Review, base_label: str = "hedef dal", cand_label: str = "PR"
             "",
         ] + [f"- {_cell(r)}" for r in review.dropped_reasons()] + [""]
 
-    diff = _diff(review.base_configs, review.cand_configs, f"{CONFIG_DIR}/")
-    diff += _diff(
-        {POLICY_FILE: review.base_policy} if review.base_policy else {},
-        {POLICY_FILE: review.cand_policy} if review.cand_policy else {},
-        "",
-    )
+    unreadable = review.verdict is not None and review.verdict.error is not None
+    diff: list[str] = []
+    if not unreadable:  # aday okunamadıysa fark "her şey silindi" gibi görünürdü
+        diff = _diff(review.base_configs, review.cand_configs, f"{CONFIG_DIR}/")
+        diff += _diff(
+            {POLICY_FILE: review.base_policy} if review.base_policy else {},
+            {POLICY_FILE: review.cand_policy} if review.cand_policy else {},
+            "",
+        )
     if diff:
         body = "\n".join(diff)
         fence = _fence(body)
         out += ["### Değişiklik", "", f"{fence}diff", body, fence, ""]
-    elif not review.error:
+    elif not review.error and not unreadable:
         out += ["Bu PR snapshot'taki yapılandırmalara ya da değişmezlere dokunmuyor.", ""]
 
     v = review.verdict

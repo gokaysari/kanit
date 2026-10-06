@@ -2,7 +2,10 @@
 
 import argparse
 import json
+import os
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -240,4 +243,103 @@ def test_broken_base_policy_means_verification_did_not_run(tmp_path, policy):
     assert rc == 2
     md = out.read_text()
     assert "DOĞRULAMA ÇALIŞMADI" in md and "Hedef daldaki snapshot okunamadı" in md
+
+
+SECRET = "sk-ant-GIZLI-ANAHTAR-123"
+
+
+@pytest.mark.parametrize("target", ["configs/core.cfg", "policy.json", "configs"])
+def test_symlink_in_candidate_is_rejected_without_reading_it(tmp_path, target):
+    secret = tmp_path / "gizli.txt"
+    secret.write_text(f"ANTHROPIC_API_KEY={SECRET}\n")
+    cand = make_snapshot(tmp_path, "pr")
+    path = cand / target
+    if path.is_dir():
+        shutil.rmtree(path)
+    else:
+        path.unlink()
+    path.symlink_to(secret if target != "configs" else tmp_path)
+    verifier = RecordingVerifier()
+    out = tmp_path / "r.md"
+    assert review.main(cli_args(ACME, cand, out), verifier=verifier) == 1
+    assert verifier.calls == []
+    md = out.read_text()
+    assert "REDDEDİLDİ" in md and "sembolik bağlantı" in md
+    assert SECRET not in md
+
+
+def test_symlinked_snapshot_root_is_rejected(tmp_path, monkeypatch):
+    real = make_snapshot(tmp_path, "gercek", "02-dogru.json")
+    monkeypatch.chdir(tmp_path)
+    Path("examples").mkdir()
+    Path("examples/acme").symlink_to(real)
+    r = review.run_check(ACME, Path("examples/acme"), RecordingVerifier())
+    assert r.exit_code == 1 and "examples/acme" in r.verdict.error
+
+
+@pytest.mark.parametrize("target", ["/proc/self/environ", "dosya"])
+def test_linked_config_content_never_reaches_any_output(tmp_path, target):
+    """configs/x.cfg -> /proc/self/environ: ortamdaki anahtar rapora ve çıktıya düşmez.
+
+    macOS'ta /proc yoktur (bağlantı boşa gösterir); 'dosya' durumu aynı yolu gerçek bir
+    gizli dosyayla sınar. Linux CI'da /proc/self/environ gerçekten anahtarı içerir.
+    """
+    secret_file = tmp_path / "gizli.txt"
+    secret_file.write_text(f"ANTHROPIC_API_KEY={SECRET}\n")
+    cand = make_snapshot(tmp_path, "pr")
+    (cand / "configs" / "x.cfg").symlink_to(secret_file if target == "dosya" else target)
+    out = tmp_path / "r.md"
+    proc = subprocess.run(
+        [sys.executable, "-m", "kanit.cli", "check", "--base", str(ACME),
+         "--candidate", str(cand), "--out", str(out), "--batfish-host", "127.0.0.1"],
+        env={**os.environ, "ANTHROPIC_API_KEY": SECRET},
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 1, proc.stderr
+    report = out.read_text()
+    for text in (proc.stdout, proc.stderr, report):
+        assert SECRET not in text
+    assert "x.cfg" in report
+
+
+@pytest.mark.parametrize(
+    "field,value", [("src", {"ip": "10.0.0.1"}), ("src", ["10.0.0.1"]), ("dst", 5)]
+)
+def test_added_invariant_with_wrong_field_type_is_the_prs_fault(tmp_path, field, value):
+    cand = make_snapshot(tmp_path, "pr")
+    policy = json.loads((cand / POLICY_FILE).read_text())
+    extra = {"name": "yeni", "start": "@enter(core[GigabitEthernet0/1])",
+             "dst": "10.20.20.30", "expect": "blocked", field: value}
+    policy["invariants"].append(extra)
+    (cand / POLICY_FILE).write_text(json.dumps(policy))
+    verifier = RecordingVerifier()
+    r = review.run_check(ACME, cand, verifier)
+    assert r.exit_code == 1 and verifier.calls == []
+    assert f"'{field}' metin olmalı" in review.render(r)
+
+
+def test_added_invariant_already_violated_by_base_is_visible_in_report(tmp_path):
+    """Mevcut kural (Verdict.accepted): mevcut yapılandırmanın da ihlal ettiği eklenmiş
+    değişmez kabulü engellemez; ama raporda açıkça görünür."""
+    cand = make_snapshot(tmp_path, "pr")
+    policy = json.loads((cand / POLICY_FILE).read_text())
+    name = "Kullanıcılar 10.20.20.20'ye SSH yapamaz"
+    policy["invariants"].append(
+        {"name": name, "start": "@enter(core[GigabitEthernet0/1])", "src": "10.10.10.0/24",
+         "dst": "10.20.20.20", "protocol": "TCP", "dst_ports": "22", "expect": "blocked"}
+    )
+    (cand / POLICY_FILE).write_text(json.dumps(policy))
+
+    class PreexistingVerifier:
+        def verify(self, base, candidate, invariants, intent_checks):
+            return Verdict(checks=[
+                CheckResult(c, "invariant", c.name != name,
+                            "akış" if c.name == name else None, preexisting=c.name == name)
+                for c in invariants
+            ])
+
+    r = review.run_check(ACME, cand, PreexistingVerifier())
+    assert r.accepted
+    row = next(line for line in review.render(r).splitlines() if name in line)
+    assert "(bu PR'da eklendi)" in row and "zaten ihlalde" in row
 

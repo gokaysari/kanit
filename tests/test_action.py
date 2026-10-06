@@ -362,6 +362,65 @@ def test_workflows_follow_security_limits():
     secret_steps = [i for i, s in enumerate(job["steps"]) if "secrets." in json.dumps(s)]
     fork_gate = names.index("PR'ın kaynağını denetle (fork ise dur)")
     assert secret_steps and all(i > fork_gate for i in secret_steps)
+    link_gate = names.index(PLAN_GATE)
+    assert all(i > link_gate for i in secret_steps)
     # Yorum metni kabuğa doğrudan gömülmez, ortam değişkeniyle geçer.
     for step in job["steps"]:
         assert "github.event.comment.body" not in step.get("run", "")
+
+
+# --- kanit-plan: PR snapshot'ı denetimi (sır kullanan adımdan önce) ---------------
+
+PLAN_GATE = "PR snapshot'ını denetle ve hazırla"
+
+
+def run_plan_gate(ws: Path) -> subprocess.CompletedProcess:
+    """kanit-plan.yml'deki denetim adımını GitHub'ın bash çağrısıyla koşar."""
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "kanit-plan.yml").read_text())
+    (step,) = [s for s in wf["jobs"]["plan"]["steps"] if s.get("name") == PLAN_GATE]
+    script = ws / "gate.sh"
+    script.write_text(step["run"])
+    return subprocess.run(
+        ["bash", "--noprofile", "--norc", "-eo", "pipefail", str(script)],
+        cwd=ws, env={**os.environ, "SNAPSHOT": wf["env"]["SNAPSHOT"]},
+        capture_output=True, text=True,
+    )
+
+
+@pytest.fixture
+def plan_ws(tmp_path):
+    """Varsayılan dal çalışma alanı + .kanit-pr altında PR checkout'u."""
+    ws = tmp_path / "ws"
+    shutil.copytree(ACME, ws / "examples" / "acme")
+    shutil.copytree(ACTION_DIR, ws / ".github" / "actions" / "kanit-check")
+    shutil.copytree(ACME, ws / ".kanit-pr" / "examples" / "acme")
+    return ws
+
+
+def test_plan_gate_copies_default_branch_policy_into_clean_pr_snapshot(plan_ws):
+    pr_policy = plan_ws / ".kanit-pr" / "examples" / "acme" / "policy.json"
+    pr_policy.write_text('{"invariants": []}')
+    proc = run_plan_gate(plan_ws)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert pr_policy.read_text() == (ACME / "policy.json").read_text()
+
+
+@pytest.mark.parametrize("target", ["policy.json", "configs/core.cfg", "snapshot"])
+def test_plan_gate_stops_on_symlink_before_secret_step(plan_ws, target):
+    victim = plan_ws / ".github" / "actions" / "kanit-check" / "post_comment.py"
+    before = victim.read_text()
+    snap = plan_ws / ".kanit-pr" / "examples" / "acme"
+    if target == "snapshot":
+        real = plan_ws / ".kanit-pr" / "baska"
+        snap.rename(real)
+        snap.symlink_to(real)
+    else:
+        (snap / target).unlink()
+        # Denetçinin gösterdiği saldırı: cp bağlantının hedefine yazardı.
+        (snap / target).symlink_to(Path("../../../.github/actions/kanit-check/post_comment.py")
+                                   if target == "policy.json" else Path("/proc/self/environ"))
+    proc = run_plan_gate(plan_ws)
+    assert proc.returncode == 1
+    assert "::error::" in proc.stdout and "sembolik bağlantı" in proc.stdout
+    assert victim.read_text() == before
+    assert "reddedildi" in (plan_ws / "kanit-plan.log").read_text()
