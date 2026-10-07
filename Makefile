@@ -26,7 +26,12 @@ demo: batfish     ## API anahtarı olmadan: önce ret, sonra kabul
 	$(PY)/kanit plan "$(INTENT)" --snapshot $(SNAPSHOT) \
 	  --scripted examples/acme/scripted/01-fazla-genis.json examples/acme/scripted/02-dogru.json
 
-plan: batfish     ## Claude ile (ANTHROPIC_API_KEY gerekir). Örn: make plan INTENT="..."
+plan:             ## Claude ile (ANTHROPIC_API_KEY gerekir). Örn: make plan INTENT="..."
+	@if [ -z "$$ANTHROPIC_API_KEY$$ANTHROPIC_AUTH_TOKEN" ]; then \
+	  echo "ANTHROPIC_API_KEY tanımlı değil. Anahtarı ortam değişkeni olarak ver ya da anahtarsız demo için make demo kullan." >&2; \
+	  exit 2; \
+	fi
+	@$(MAKE) --no-print-directory batfish
 	$(PY)/kanit plan "$(INTENT)" --snapshot $(SNAPSHOT)
 
 site:             ## Tanıtım sitesini yerelde aç (http://localhost:3000)

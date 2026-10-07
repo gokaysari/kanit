@@ -60,6 +60,25 @@ def _round(r: Round, n: int, base: dict[str, str]) -> list[str]:
     return out
 
 
+NOT_RUN = "DOĞRULAMA ÇALIŞMADI"
+
+
+def render_failure(intent: str, message: str) -> str:
+    """Doğrulama hiç çalışamadığında (çıkış kodu 2) yazılan rapor."""
+    return "\n".join(
+        [
+            f"# Kanıt raporu: {NOT_RUN}",
+            "",
+            f"**Niyet:** {intent}",
+            "",
+            f"**Sebep:** {message}",
+            "",
+            "Hiçbir öneri doğrulanmadı; bu bir ret değil. Yapılandırmaya dokunulmadı.",
+            "",
+        ]
+    )
+
+
 def render(result: Result) -> str:
     verdict = "KABUL EDİLDİ" if result.accepted else "REDDEDİLDİ"
     out = [
