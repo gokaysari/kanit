@@ -24,6 +24,8 @@ class FlowCheck:
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> "FlowCheck":
+        if not isinstance(d, dict):
+            raise ProposalError(f"Akış kontrolü bir nesne olmalı, gelen: {d!r:.200}")
         missing = [k for k in ("name", "start", "dst", "expect") if not d.get(k)]
         if missing:
             raise ProposalError(f"Akış kontrolünde eksik alan: {', '.join(missing)}")
@@ -53,6 +55,15 @@ class Edit:
     old: str
     new: str
 
+    @staticmethod
+    def from_dict(d: Any) -> "Edit":
+        fields = ("file", "old", "new")
+        if not isinstance(d, dict) or not all(isinstance(d.get(k), str) for k in fields):
+            raise ProposalError(
+                f"Düzenleme şemaya uymuyor; file, old ve new metin olmalı, gelen: {d!r:.200}"
+            )
+        return Edit(d["file"], d["old"], d["new"])
+
 
 @dataclass(frozen=True)
 class Proposal:
@@ -62,17 +73,72 @@ class Proposal:
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> "Proposal":
-        try:
-            edits = tuple(Edit(e["file"], e["old"], e["new"]) for e in d["edits"])
-            checks = tuple(FlowCheck.from_dict(c) for c in d["intent_checks"])
-            summary = str(d["summary"])
-        except (KeyError, TypeError) as exc:
-            raise ProposalError(f"Öneri şemaya uymuyor: {exc!r}") from exc
+        if not isinstance(d, dict):
+            raise ProposalError(f"Öneri bir nesne olmalı, gelen: {d!r:.200}")
+        missing = [k for k in ("summary", "edits", "intent_checks") if k not in d]
+        if missing:
+            raise ProposalError(f"Öneri şemaya uymuyor; eksik alan: {', '.join(missing)}")
+        for key in ("edits", "intent_checks"):
+            if not isinstance(d[key], list):
+                raise ProposalError(f"Öneri şemaya uymuyor; '{key}' bir liste olmalı")
+        edits = tuple(Edit.from_dict(e) for e in d["edits"])
+        checks = tuple(FlowCheck.from_dict(c) for c in d["intent_checks"])
+        summary = str(d["summary"])
         if not edits:
             raise ProposalError("Öneri hiç değişiklik içermiyor")
         if not checks:
             raise ProposalError("Öneri hiç niyet kontrolü içermiyor; doğrulanacak bir şey yok")
         return Proposal(summary, edits, checks)
+
+
+@dataclass
+class Usage:
+    """Model çağrılarının token tüketimi; maliyeti görünür kılmak için toplanır."""
+
+    calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_input_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+
+    def add(self, api_usage: Any) -> None:
+        """API yanıtındaki usage nesnesini ekler (eksik alanlar 0 sayılır)."""
+        self.calls += 1
+        for name in (
+            "input_tokens",
+            "output_tokens",
+            "cache_read_input_tokens",
+            "cache_creation_input_tokens",
+        ):
+            setattr(self, name, getattr(self, name) + (getattr(api_usage, name, 0) or 0))
+
+    def __sub__(self, other: "Usage") -> "Usage":
+        return Usage(
+            *(getattr(self, f) - getattr(other, f) for f in self.__dataclass_fields__)
+        )
+
+    def __add__(self, other: "Usage") -> "Usage":
+        return Usage(
+            *(getattr(self, f) + getattr(other, f) for f in self.__dataclass_fields__)
+        )
+
+    def copy(self) -> "Usage":
+        return self + Usage()
+
+    def describe(self) -> str:
+        def n(x: int) -> str:
+            return f"{x:,}".replace(",", ".")
+
+        cache = ""
+        if self.cache_read_input_tokens or self.cache_creation_input_tokens:
+            cache = (
+                f" (önbellekten okunan {n(self.cache_read_input_tokens)},"
+                f" önbelleğe yazılan {n(self.cache_creation_input_tokens)})"
+            )
+        return (
+            f"{self.calls} çağrı, {n(self.input_tokens)} giriş + "
+            f"{n(self.output_tokens)} çıkış token{cache}"
+        )
 
 
 @dataclass

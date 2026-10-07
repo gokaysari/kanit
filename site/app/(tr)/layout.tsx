@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import "../styles";
+import "../globals.css";
 import { buildMetadata } from "../metadata";
 import { tr } from "@/content/tr";
 

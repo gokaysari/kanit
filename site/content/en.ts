@@ -107,7 +107,7 @@ export const en: Dictionary = {
   },
   closing: {
     title: "Try it on your own network",
-    body: "Your configurations stay with you: verification runs on a Batfish instance on your own machine. We are looking for our first pilot teams.",
+    body: "Verification runs on a Batfish instance on your own machine, and the tool never connects to a device. If you have Claude write the change, your configurations are sent to the Anthropic API. We are looking for our first pilot teams.",
     cta: "Write to us about a pilot",
   },
   footer: { builtOn: "Built on open-source", and: "and Claude.", source: "Source code" },

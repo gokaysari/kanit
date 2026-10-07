@@ -27,6 +27,8 @@ def _round(r: Round, n: int, base: dict[str, str]) -> list[str]:
     v = r.verdict
     status = "KABUL" if v.accepted else "RET"
     out = [f"## Tur {n}: {status}", ""]
+    if r.usage.calls:
+        out += [f"Model kullanımı: {r.usage.describe()}", ""]
     if v.error:
         return out + [f"Öneri uygulanamadı: {v.error}", ""]
     out += [r.proposal.summary, "", "```diff", _diff(base, r.candidate_configs), "```", ""]
@@ -62,8 +64,15 @@ def render(result: Result) -> str:
         f"**Tur sayısı:** {len(result.rounds)}",
         "",
     ]
+    if result.usage.calls:
+        out += [
+            f"**Model:** {result.model} · **Toplam kullanım:** {result.usage.describe()}",
+            "",
+        ]
     for n, r in enumerate(result.rounds, 1):
         out += _round(r, n, result.base_configs)
+    if result.error:
+        out += [f"**Döngü durdu:** {result.error}", ""]
     if not result.accepted:
         out += ["Hiçbir öneri doğrulamadan geçmedi; yapılandırmaya dokunulmadı.", ""]
     return "\n".join(out)

@@ -19,4 +19,8 @@ kanit = "kanit.cli:main"
 where = ["src"]
 
 [tool.pytest.ini_options]
-markers = ["batfish: çalışan bir Batfish servisi gerektirir (BATFISH_HOST)"]
+markers = [
+  "batfish: çalışan bir Batfish servisi gerektirir (BATFISH_HOST)",
+  "claude: gerçek Claude API'sini çağırır (ücretli); yalnızca make live-test ile",
+]
+addopts = "-m 'not claude'"

@@ -4,8 +4,8 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .models import Proposal, ProposalError, Verdict
-from .proposer import Proposer
+from .models import Proposal, ProposalError, Usage, Verdict
+from .proposer import Proposer, ProposerError
 from .snapshot import apply_edits, read_configs, read_invariants, write_candidate
 from .verifier import Verifier
 
@@ -15,6 +15,7 @@ class Round:
     proposal: Proposal | None
     verdict: Verdict
     candidate_configs: dict[str, str] | None = None
+    usage: Usage = field(default_factory=Usage)
 
 
 @dataclass
@@ -22,10 +23,13 @@ class Result:
     intent: str
     base_configs: dict[str, str]
     rounds: list[Round] = field(default_factory=list)
+    usage: Usage = field(default_factory=Usage)
+    model: str | None = None
+    error: str | None = None  # döngü öneri alamadan durdu (API hatası vb.)
 
     @property
     def accepted(self) -> bool:
-        return bool(self.rounds) and self.rounds[-1].verdict.accepted
+        return self.error is None and bool(self.rounds) and self.rounds[-1].verdict.accepted
 
     @property
     def final(self) -> Round | None:
@@ -42,18 +46,26 @@ def run(
     """Öner -> doğrula -> karşı örnekle düzelt. Yalnızca doğrulanan öneri kabul edilir."""
     base_configs = read_configs(snapshot)
     invariants = read_invariants(snapshot)
-    result = Result(intent, base_configs)
+    result = Result(intent, base_configs, model=getattr(proposer, "model", None))
     feedback: str | None = None
 
     with tempfile.TemporaryDirectory(prefix="kanit-") as tmp:
         for i in range(max_rounds):
-            raw = proposer.propose(feedback)
+            before = proposer.usage.copy()
+            try:
+                raw = proposer.propose(feedback)
+            except ProposerError as exc:
+                result.error = str(exc)
+                break
+            finally:
+                result.usage = proposer.usage.copy()
+            spent = proposer.usage - before
             try:
                 proposal = Proposal.from_dict(raw)
                 candidate = apply_edits(base_configs, proposal)
             except ProposalError as exc:
                 verdict = Verdict(error=str(exc))
-                result.rounds.append(Round(None, verdict))
+                result.rounds.append(Round(None, verdict, usage=spent))
                 feedback = verdict.feedback()
                 continue
 
@@ -61,7 +73,7 @@ def run(
             verdict = verifier.verify(
                 snapshot, cand_dir, invariants, list(proposal.intent_checks)
             )
-            result.rounds.append(Round(proposal, verdict, candidate))
+            result.rounds.append(Round(proposal, verdict, candidate, spent))
             if verdict.accepted:
                 break
             feedback = verdict.feedback()

@@ -11,20 +11,24 @@ function mailto(subject: string) {
 
 export function Landing({ dict }: { dict: Dictionary }) {
   const otherLang = dict.lang === "tr" ? "en" : "tr";
+  const labels = dict.lang === "tr"
+    ? { eyebrow: "Doğrulanmış ağ değişiklikleri", record: "Canlı kanıt kaydı", process: "Süreç / 03 adım", field: "Sahada çalıştır", scope: "Kanıtın sınırı", chapter: "Bölüm", availability: "Pilot erişimi açık" }
+    : { eyebrow: "Verified network changes", record: "Live proof record", process: "Process / 03 steps", field: "Run it locally", scope: "Boundary of proof", chapter: "Chapter", availability: "Pilot access is open" };
+
   return (
-    <>
+    <div className={styles.page}>
       <a className={styles.skip} href="#main">
         {dict.skipLink}
       </a>
-      <header className={`${styles.wrap} ${styles.top}`}>
-        <div className={styles.mark}>
-          {site.name}
-          <span>.</span>
-        </div>
+      <header className={styles.top}>
+        <a className={styles.mark} href={dict.lang === "tr" ? "/" : "/en/"} aria-label={site.name}>
+          <span className={styles.markGlyph}>K</span>
+          <span>{site.name}</span>
+        </a>
         <nav className={styles.nav} aria-label={dict.nav.label}>
-          <a href="#how">{dict.nav.how}</a>
-          <a href="#demo">{dict.nav.demo}</a>
-          <a href="#limits">{dict.nav.limits}</a>
+          <a href="#record">01 — {labels.record}</a>
+          <a href="#how">02 — {dict.nav.how}</a>
+          <a href="#demo">03 — {dict.nav.demo}</a>
           <a
             className={styles.lang}
             href={dict.otherLang.href}
@@ -37,49 +41,96 @@ export function Landing({ dict }: { dict: Dictionary }) {
       </header>
 
       <main id="main" tabIndex={-1}>
-        <div className={`${styles.wrap} ${styles.hero}`}>
-          <div>
+        <section className={styles.hero}>
+          <div className={styles.heroGrid}>
+            <p className={styles.eyebrow}>
+              <span>NETLEMMA / KANIT</span>
+              <span>2026 — 001</span>
+            </p>
             <h1 className={styles.title}>{dict.hero.title}</h1>
-            <p className={styles.lede}>{dict.hero.lede}</p>
-            <a className={styles.cta} href={mailto(`${site.name} demo`)}>
-              {dict.hero.cta}
-            </a>
-            <p className={styles.status}>{dict.hero.status}</p>
+            <div className={styles.heroFoot}>
+              <p className={styles.heroIndex}>[ K / 01 ]</p>
+              <div>
+                <p className={styles.lede}>{dict.hero.lede}</p>
+                <div className={styles.heroActions}>
+                  <a className={styles.cta} href={mailto(`${site.name} demo`)}>
+                    {dict.hero.cta}<span aria-hidden="true">↗</span>
+                  </a>
+                  <p className={styles.status}>
+                    <span className={styles.pulse} aria-hidden="true" />
+                    {dict.hero.status}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className={styles.heroRail} aria-hidden="true">
+            <span>{labels.eyebrow}</span>
+            <span>SCROLL ↓</span>
+          </div>
+        </section>
+
+        <section className={`${styles.band} ${styles.recordBand}`} id="record">
+          <div className={styles.sectionHead}>
+            <p>01 / {labels.chapter}</p>
+            <h2>{labels.record}</h2>
+            <p>{dict.record.request}</p>
           </div>
           <ChangeRecord record={dict.record} />
-        </div>
+        </section>
 
         <section className={styles.band} id="how">
-          <div className={styles.wrap}>
-            <h2 className={styles.heading}>{dict.how.title}</h2>
+          <div className={styles.sectionHead}>
+            <p>02 / {labels.chapter}</p>
+            <h2>{dict.how.title}</h2>
+            <p>{labels.process}</p>
+          </div>
+          <div className={styles.processGrid}>
+            <div className={styles.processStatement}>
+              <span>REQUEST</span>
+              <strong>{dict.record.request}</strong>
+              <span className={styles.processArrow} aria-hidden="true">↓</span>
+              <span>VERIFIED CHANGE</span>
+            </div>
             <ol className={styles.steps}>
-              {dict.how.steps.map((step) => (
+              {dict.how.steps.map((step, index) => (
                 <li key={step.title}>
-                  <h3>{step.title}</h3>
-                  <p>{step.body}</p>
+                  <span className={styles.stepNo}>0{index + 1}</span>
+                  <div>
+                    <h3>{step.title}</h3>
+                    <p>{step.body}</p>
+                  </div>
                 </li>
               ))}
             </ol>
           </div>
         </section>
 
-        <section className={styles.band} id="demo" aria-labelledby="demo-title">
-          <div className={styles.wrap}>
-            <h2 className={styles.heading} id="demo-title">
-              {dict.demo.title}
-            </h2>
+        <section className={`${styles.band} ${styles.demoBand}`} id="demo" aria-labelledby="demo-title">
+          <div className={styles.sectionHead}>
+            <p>03 / {labels.chapter}</p>
+            <h2 id="demo-title">{dict.demo.title}</h2>
+            <p>{labels.field}</p>
+          </div>
+          <div className={styles.demoInner}>
             <DemoSlot demo={dict.demo} />
           </div>
         </section>
 
-        <section className={styles.band} id="limits">
-          <div className={`${styles.wrap} ${styles.cols}`}>
-            {[dict.proves, dict.limits].map((col) => (
-              <div key={col.title}>
-                <h2 className={styles.heading}>{col.title}</h2>
+        <section className={`${styles.band} ${styles.scopeBand}`} id="limits">
+          <div className={styles.sectionHead}>
+            <p>04 / {labels.chapter}</p>
+            <h2>{labels.scope}</h2>
+            <p>{dict.nav.limits}</p>
+          </div>
+          <div className={styles.cols}>
+            {[dict.proves, dict.limits].map((col, index) => (
+              <div key={col.title} className={index === 0 ? styles.positive : styles.negative}>
+                <span className={styles.colSign} aria-hidden="true">{index === 0 ? "+" : "−"}</span>
+                <h3>{col.title}</h3>
                 <ul>
-                  {col.items.map((item) => (
-                    <li key={item}>{item}</li>
+                  {col.items.map((item, itemIndex) => (
+                    <li key={item}><span>0{itemIndex + 1}</span>{item}</li>
                   ))}
                 </ul>
               </div>
@@ -87,23 +138,29 @@ export function Landing({ dict }: { dict: Dictionary }) {
           </div>
         </section>
 
-        <section className={styles.band}>
-          <div className={styles.wrap}>
-            <h2 className={styles.heading}>{dict.closing.title}</h2>
+        <section className={`${styles.band} ${styles.closingBand}`}>
+          <div>
+            <p className={styles.availability}><span className={styles.pulse} />{labels.availability}</p>
+            <h2>{dict.closing.title}</h2>
             <p className={styles.closing}>{dict.closing.body}</p>
-            <a className={styles.cta} href={mailto(`${site.name} pilot`)}>
+            <a className={`${styles.cta} ${styles.ctaLight}`} href={mailto(`${site.name} pilot`)}>
               {dict.closing.cta}
+              <span aria-hidden="true">↗</span>
             </a>
           </div>
+          <a className={styles.bigMail} href={`mailto:${site.email}`}>{site.email}</a>
         </section>
       </main>
 
       <footer className={styles.footer}>
-        <div className={styles.wrap}>
+        <div>
+          <span>© {new Date().getFullYear()} {site.name} / Netlemma</span>
+          <span>
           {dict.footer.builtOn} <a href={site.batfish}>Batfish</a> {dict.footer.and}{" "}
           <a href={site.repo}>{dict.footer.source}</a>
+          </span>
         </div>
       </footer>
-    </>
+    </div>
   );
 }
