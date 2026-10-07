@@ -36,6 +36,20 @@ make plan      # Claude ile; başka istek için: make plan INTENT="..."
 
 Rapor `kanit-rapor.md` dosyasına yazılır. Çıkış kodu kabulde 0, rette 1. Doğrudan komut: `kanit plan "<istek>" --snapshot <klasör>`; `--apply` kabul edilen değişikliği snapshot'a yazar, model `--model` ya da `KANIT_MODEL` ile seçilir.
 
+## Pull request botu
+
+Model çağrısı olmadan yalnızca doğrulama: PR'daki snapshot aday, hedef daldaki mevcut.
+
+```bash
+kanit check --base <hedef dal snapshot> --candidate <PR snapshot>   # 0 kabul, 1 ret, 2 doğrulama çalışmadı
+```
+
+Değişmezler hedef daldaki `policy.json`'dan okunur; PR'ın eklediği yeni değişmezler de kontrol edilir. Hedef daldaki bir değişmezi silen ya da değiştiren PR, yapılandırması ne olursa olsun reddedilir (değişmez önce tek başına silinip sonra ihlal edilemesin). PR snapshot'ında sembolik bağlantı varsa hiçbir dosya okunmadan reddedilir; bağlantı snapshot dışındaki içeriği (ör. ortam değişkenlerini) rapora ya da modele taşıyabilirdi.
+
+- `.github/actions/kanit-check/`: yeniden kullanılabilir eylem. Raporu PR yorumu olarak yazar (her push'ta aynı yorumu günceller), ihlalde kontrolü kırmızı yapar. Sır kullanmaz; fork PR'larında yorum yerine iş özetine yazar.
+- `.github/workflows/kanit-pr.yml`: `examples/acme` için örnek iş akışı (`pull_request`, izinler `contents: read`, `pull-requests: write`). Başka bir yapılandırma reposunda `uses: gokaysari/kanit/.github/actions/kanit-check@<commit>` ile kullanılır; Batfish servis kapsayıcısı ve `fetch-depth: 2` gerekir; `snapshot` repo köküne göre göreli olmalı (mutlak ya da `..` içeren yol reddedilir, çünkü yolun bileşenlerinde sembolik bağlantı ancak böyle denetlenebilir). Dış repoda eylemi bir dala değil commit SHA'ya sabitleyin; bu repoda eylem ve araç PR'ın kendi kodundan kurulduğu için kontrol PR'ın kendisi tarafından değiştirilebilir.
+- `.github/workflows/kanit-plan.yml`: istekten değişiklik üreten akış. PR'a `/kanit plan <istek>` yorumu yazılınca (yalnızca sahip, üye, iş birlikçi; fork PR'ında çalışmaz) Claude önerir, Batfish varsayılan daldaki değişmezlerle doğrular, rapor PR yorumuna düşer. `ANTHROPIC_API_KEY` repo sırrı gerekir; öneri dala yazılmaz.
+
 ## Snapshot düzeni
 
 ```
