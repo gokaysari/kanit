@@ -23,7 +23,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .models import FlowCheck, ProposalError, Verdict
-from .snapshot import CONFIG_DIR, POLICY_FILE, read_configs, read_invariants, write_candidate
+from .snapshot import (
+    CONFIG_DIR,
+    POLICY_FILE,
+    UnsupportedLayout,
+    read_configs,
+    read_invariants,
+    write_candidate,
+)
 from .verifier import Verifier
 
 EXIT_ACCEPTED, EXIT_REJECTED, EXIT_ERROR = 0, 1, 2
@@ -184,6 +191,13 @@ def run_check(base: Path, candidate: Path, verifier: Verifier) -> Review:
         type_errors = _field_type_errors(review.cand_policy)
         if type_errors:
             raise ProposalError("; ".join(type_errors))
+    except UnsupportedLayout as exc:
+        # Doğrulanan dosya kümesi bilinemez: ret değil, "doğrulama çalışmadı" (çıkış 2).
+        # Verdict.error da konur: rapor aday okunmamış gibi davranır (yanıltıcı "her şey
+        # silindi" farkı gösterilmez).
+        review.error = f"PR'daki snapshot desteklenmeyen düzende: {exc}"
+        review.verdict = Verdict(error=review.error)
+        return review
     except _READ_ERRORS as exc:
         # PR'ın bozduğu snapshot reddedilir; doğrulanamayan değişiklik kabul edilmez.
         review.verdict = Verdict(error=f"PR'daki snapshot okunamadı: {_why(exc)}")

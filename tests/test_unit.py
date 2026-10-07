@@ -426,4 +426,144 @@ def test_location_delta(monkeypatch, base, cand, new, lost):
     monkeypatch.setattr(
         BatfishVerifier, "_location_states", staticmethod(lambda bf, start, snap: states[snap])
     )
-    assert BatfishVerifier._location_delta(None, SSH_ALL) == (new, lost)
+    delta = BatfishVerifier._location_delta(None, SSH_ALL.start)
+    assert (delta.new, delta.lost) == (new, lost)
+    assert delta.common == (new == [] and lost == [] and bool(base))
+    assert delta.resolved
+
+
+def test_location_delta_without_ip_comparison(monkeypatch):
+    """Ağ geneli fark: kaynak uzayı boş/dolu değişimi yeni konum sayılmaz, etkinlik sayılır."""
+    from kanit.verifier import BatfishVerifier
+
+    states = {"base": {"L1": ("s1", True, False), "L2": ("s2", False, True)},
+              "cand": {"L1": ("s1", True, True), "L2": ("s2", True, True)}}
+    monkeypatch.setattr(
+        BatfishVerifier, "_location_states", staticmethod(lambda bf, start, snap: states[snap])
+    )
+    delta = BatfishVerifier._location_delta(None, "x", compare_ips=False)
+    assert (delta.new, delta.lost, delta.common) == (["s2"], [], True)
+
+
+def test_location_delta_unresolved_everywhere(monkeypatch):
+    from kanit.verifier import BatfishVerifier
+
+    monkeypatch.setattr(
+        BatfishVerifier, "_location_states", staticmethod(lambda bf, start, snap: {})
+    )
+    assert not BatfishVerifier._location_delta(None, "@enter(yok[Gi0])").resolved
+
+
+class _Answer(dict):
+    """pybatfish'in tablo dışı Answer'ı: frame() yok, sözlük gibi okunur."""
+
+
+def test_table_distinguishes_empty_sources_from_unexpected_answers():
+    from kanit.verifier import _NoSources, _table
+
+    def answer(text, status="SUCCESS"):
+        return _Answer(status=status, answerElements=[{"answer": text}])
+
+    for text in ("No matching source locations", "All sources have empty source IpSpaces"):
+        with pytest.raises(_NoSources):
+            _table(answer(text))
+    with pytest.raises(RuntimeError):
+        _table(answer("No matching source locations", status="FAILURE"))
+    with pytest.raises(RuntimeError):
+        _table(answer("başka bir şey"))
+    with pytest.raises(RuntimeError):
+        _table(_Answer())
+    frame = object()
+    assert _table(SimpleNamespace(frame=lambda: frame)) is frame
+
+
+def test_loop_turns_verifier_exception_into_error_not_crash(tmp_path):
+    """Beklenmeyen doğrulayıcı hatası döngüyü çökertmez; sonuç 'doğrulama çalışmadı'."""
+
+    class Broken:
+        def verify(self, *a):
+            raise RuntimeError("Batfish beklenmeyen bir cevap döndürdü")
+
+    result = loop.run("x", ACME, ScriptedProposer([GOOD]), Broken())
+    assert not result.accepted and result.rounds == []
+    assert "Batfish doğrulaması çalışmadı: RuntimeError" in result.error
+    assert "Döngü durdu" in report.render(result)
+
+
+def test_plan_exits_2_when_verifier_raises(tmp_path, monkeypatch):
+    class Broken:
+        def __init__(self, host):
+            pass
+
+        def verify(self, *a):
+            raise ConnectionError("Batfish'e ulaşılamadı")
+
+    monkeypatch.setattr(cli, "BatfishVerifier", Broken)
+    rc = cli.main(["plan", "x", "--snapshot", str(ACME), "--scripted", str(GOOD),
+                   "--out", str(tmp_path / "r.md")])
+    assert rc == 2
+
+
+def test_loop_verifies_base_and_candidate_from_same_file_set(tmp_path):
+    """Mevcut taraf da yalnızca configs/ ile yazılır: snapshot'taki başka klasörler
+    (ör. batfish/, hosts/) yalnızca bir tarafa gitmez."""
+    snap = tmp_path / "snap"
+    import shutil
+
+    shutil.copytree(ACME, snap)
+    (snap / "hosts").mkdir()
+    (snap / "hosts" / "h.json").write_text("{}")
+    seen = []
+
+    class Recorder(FakeVerifier):
+        def verify(self, base, candidate, invariants, intent_checks):
+            seen.append((sorted(p.relative_to(base).as_posix() for p in base.rglob("*")),
+                         sorted(p.relative_to(candidate).as_posix()
+                                for p in candidate.rglob("*"))))
+            return super().verify(base, candidate, invariants, intent_checks)
+
+    loop.run("x", snap, ScriptedProposer([GOOD]), Recorder())
+    ((base_files, cand_files),) = seen
+    assert base_files == cand_files == ["configs", "configs/core.cfg", "configs/edge.cfg"]
+
+
+@pytest.mark.parametrize("layout", ["alt-klasor", "gizli", "baglanti"])
+def test_read_configs_layout_rules(tmp_path, layout):
+    from kanit.snapshot import UnsupportedLayout
+
+    import shutil
+
+    snap = tmp_path / "snap"
+    shutil.copytree(ACME, snap)
+    cfg = snap / "configs"
+    if layout == "alt-klasor":
+        (cfg / "ek").mkdir()
+        (cfg / "ek" / "core2.cfg").write_text("hostname core2\n")
+        with pytest.raises(UnsupportedLayout):
+            read_configs(snap)
+    elif layout == "gizli":
+        # Batfish gizli dosya ve klasörleri yüklemez; read_configs de okumaz.
+        (cfg / ".gizli.cfg").write_text("hostname gizli\n")
+        (cfg / ".git").mkdir()
+        (cfg / ".git" / "x.cfg").write_text("hostname x\n")
+        assert set(read_configs(snap)) == {"core.cfg", "edge.cfg"}
+    else:
+        secret = tmp_path / "sir.txt"
+        secret.write_text("SIR")
+        (cfg / "x.cfg").symlink_to(secret)
+        with pytest.raises(ValueError, match="sembolik"):
+            read_configs(snap)
+
+
+def test_plan_with_subdirectory_snapshot_exits_2(tmp_path):
+    import shutil
+
+    snap = tmp_path / "snap"
+    shutil.copytree(ACME, snap)
+    (snap / "configs" / "ek").mkdir()
+    (snap / "configs" / "ek" / "core2.cfg").write_text("hostname core2\n")
+    out = tmp_path / "r.md"
+    rc = cli.main(["plan", "x", "--snapshot", str(snap), "--scripted", str(GOOD),
+                   "--out", str(out), "--batfish-host", "kullanilmaz.invalid"])
+    assert rc == 2
+    assert "desteklenmeyen düzende" in out.read_text()
