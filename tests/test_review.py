@@ -357,8 +357,9 @@ def test_added_invariant_with_wrong_field_type_is_the_prs_fault(tmp_path, field,
 
 
 def test_added_invariant_already_violated_by_base_is_visible_in_report(tmp_path):
-    """Mevcut kural (Verdict.accepted): mevcut yapılandırmanın da ihlal ettiği eklenmiş
-    değişmez kabulü engellemez; ama raporda açıkça görünür."""
+    """Mevcut kural (Verdict.accepted): mevcut yapılandırmanın da ihlal ettiği ve adayın
+    genişletmediği (doğrulayıcı kanıtlar, preexisting=True) eklenmiş değişmez kabulü
+    engellemez; ama raporda açıkça görünür."""
     cand = make_snapshot(tmp_path, "pr")
     policy = json.loads((cand / POLICY_FILE).read_text())
     name = "Kullanıcılar 10.20.20.20'ye SSH yapamaz"
@@ -379,5 +380,6 @@ def test_added_invariant_already_violated_by_base_is_visible_in_report(tmp_path)
     r = review.run_check(ACME, cand, PreexistingVerifier())
     assert r.accepted
     row = next(line for line in review.render(r).splitlines() if name in line)
-    assert "(bu PR'da eklendi)" in row and "zaten ihlalde" in row
+    assert "(bu PR'da eklendi)" in row
+    assert "önceden de ihlal ediliyordu; bu değişiklik ihlali genişletmiyor (kanıtlandı)" in row
 

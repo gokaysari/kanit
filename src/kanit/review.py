@@ -312,7 +312,10 @@ def render(review: Review, base_label: str = "hedef dal", cand_label: str = "PR"
             if c.passed:
                 res = "kanıtlandı"
             elif c.preexisting:
-                res = f"zaten ihlalde (değişiklikten bağımsız): {_code(c.counterexample)}"
+                res = (
+                    "önceden de ihlal ediliyordu; bu değişiklik ihlali genişletmiyor "
+                    f"(kanıtlandı). Mevcut ihlal örneği: {_code(c.counterexample)}"
+                )
             else:
                 res = f"**ihlal**, karşı örnek: {_code(c.counterexample)}"
             out.append(f"| {name} | {want} | {res} |")
@@ -320,7 +323,10 @@ def render(review: Review, base_label: str = "hedef dal", cand_label: str = "PR"
         for title, items in (
             ("Yeni ayrıştırma sorunları", v.new_parse_issues),
             ("Yeni tanımsız referanslar", v.new_undefined_refs),
-            ("Davranışı değişen örnek akışlar (öncesi -> sonrası)", v.changed_flows),
+            (
+                "Davranışı değişen örnek akışlar (öncesi -> sonrası; tam liste değil)",
+                v.changed_flows,
+            ),
         ):
             if items:
                 out += [f"**{title}**", ""] + [f"- {_code(i)}" for i in items] + [""]

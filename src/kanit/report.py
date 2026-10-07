@@ -39,7 +39,10 @@ def _round(r: Round, n: int, base: dict[str, str]) -> list[str]:
         if c.passed:
             res = "kanıtlandı"
         elif c.preexisting:
-            res = f"zaten ihlalde (değişiklikten bağımsız): `{c.counterexample}`"
+            res = (
+                "önceden de ihlal ediliyordu; bu değişiklik ihlali genişletmiyor "
+                f"(kanıtlandı). Mevcut ihlal örneği: `{c.counterexample}`"
+            )
         else:
             res = f"**ihlal**: `{c.counterexample}`"
         out.append(f"| {c.check.name} | {kind} | {want} | {res} |")
@@ -47,7 +50,10 @@ def _round(r: Round, n: int, base: dict[str, str]) -> list[str]:
     for title, items in (
         ("Yeni ayrıştırma sorunları", v.new_parse_issues),
         ("Yeni tanımsız referanslar", v.new_undefined_refs),
-        ("Davranışı değişen örnek akışlar (öncesi -> sonrası)", v.changed_flows),
+        (
+            "Davranışı değişen örnek akışlar (öncesi -> sonrası; tam liste değil)",
+            v.changed_flows,
+        ),
     ):
         if items:
             out += [f"**{title}**", ""] + [f"- `{i}`" for i in items] + [""]
