@@ -1,16 +1,32 @@
+@import "@fontsource/ibm-plex-sans/latin-400.css";
+@import "@fontsource/ibm-plex-sans/latin-ext-400.css";
+@import "@fontsource/ibm-plex-sans/latin-500.css";
+@import "@fontsource/ibm-plex-sans/latin-ext-500.css";
+@import "@fontsource/ibm-plex-sans/latin-600.css";
+@import "@fontsource/ibm-plex-sans/latin-ext-600.css";
+@import "@fontsource/ibm-plex-sans-condensed/latin-700.css";
+@import "@fontsource/ibm-plex-sans-condensed/latin-ext-700.css";
+@import "@fontsource/ibm-plex-mono/latin-400.css";
+@import "@fontsource/ibm-plex-mono/latin-ext-400.css";
+
 :root {
-  --ink: #152238;
-  --ink-soft: #4a5a73;
-  /* Yalnızca büyük, süs niteliğindeki rakamlar için: zeminde 3.2:1 (WCAG büyük metin sınırı 3:1). */
-  --ink-faint: #7d8aa0;
-  --paper: #f3f5f8;
-  --sheet: #ffffff;
-  --rule: #c9d2de;
-  --ok: #1f7a50;
-  --ok-wash: #e4f3ea;
-  --no: #b4291f;
-  --no-wash: #fbe9e6;
-  --link: #2447d6;
+  --black: #0a0c0a;
+  --cream: #f1efe7;
+  --paper: #e9e7df;
+  --sheet: #f5f3ec;
+  --ink: #111410;
+  --ink-soft: #555b52;
+  --ink-faint: #777d74;
+  --rule: #bcbdb4;
+  --dark-rule: rgba(241, 239, 231, .18);
+  --dark-muted: #969b92;
+  --acid: #d1ff48;
+  --acid-soft: #e6f6b8;
+  --ok: #2c711f;
+  --ok-wash: #ddedc6;
+  --no: #b52d23;
+  --no-wash: #f3d9d3;
+  --link: #1f4518;
   --sans: "IBM Plex Sans", system-ui, sans-serif;
   --cond: "IBM Plex Sans Condensed", "IBM Plex Sans", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
@@ -30,6 +46,7 @@ body {
   background: var(--paper);
   color: var(--ink);
   font: 400 17px/1.55 var(--sans);
+  text-rendering: optimizeLegibility;
 }
 
 a {
@@ -38,7 +55,7 @@ a {
 }
 
 :focus-visible {
-  outline: 3px solid var(--link);
+  outline: 3px solid var(--acid);
   outline-offset: 3px;
 }
 

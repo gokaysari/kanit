@@ -1,41 +1,44 @@
 .record {
-  background: var(--sheet);
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  box-shadow: 0 18px 40px -24px rgba(21, 34, 56, 0.45);
+  background: var(--black);
+  color: var(--cream);
+  border: 1px solid var(--black);
   overflow: hidden;
 }
 
 .request {
-  padding: 18px 20px;
-  border-bottom: 1px solid var(--rule);
+  display: grid;
+  grid-template-columns: minmax(130px, .35fr) 1fr;
+  gap: 24px;
+  padding: 24px clamp(20px, 4vw, 52px);
+  border-bottom: 1px solid var(--dark-rule);
 }
 
 .request small {
   display: block;
   font-size: 13px;
-  color: var(--ink-soft);
+  color: var(--dark-muted);
   margin-bottom: 4px;
 }
 
 .request p {
   margin: 0;
-  font-weight: 500;
+  font: 700 clamp(19px, 2vw, 30px)/1.15 var(--cond);
+  letter-spacing: -.025em;
 }
 
 .tabs {
   display: flex;
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--dark-rule);
 }
 
 .tabs button {
   flex: 1;
   font: 500 15px/1 var(--sans);
-  color: var(--ink-soft);
-  background: var(--paper);
+  color: var(--dark-muted);
+  background: #111411;
   border: 0;
-  border-right: 1px solid var(--rule);
-  padding: 14px 12px;
+  border-right: 1px solid var(--dark-rule);
+  padding: 17px clamp(14px, 3vw, 36px);
   cursor: pointer;
   text-align: left;
 }
@@ -45,8 +48,8 @@
 }
 
 .tabs button[aria-selected="true"] {
-  background: var(--sheet);
-  color: var(--ink);
+  background: var(--acid);
+  color: var(--black);
 }
 
 .tabs b {
@@ -63,15 +66,16 @@
 }
 
 .panel {
-  padding: 18px 20px 20px;
+  position: relative;
+  padding: clamp(22px, 4vw, 52px);
 }
 
 .diff {
-  font: 400 13.5px/1.65 var(--mono);
-  margin: 0 0 16px;
-  padding: 12px 14px;
-  background: var(--paper);
-  border-radius: 4px;
+  font: 400 13.5px/1.8 var(--mono);
+  margin: 0 0 28px;
+  padding: clamp(18px, 3vw, 34px);
+  color: #bbc0b7;
+  background: #111411;
   overflow-x: auto;
 }
 
@@ -102,7 +106,7 @@
   grid-template-columns: 1fr auto;
   gap: 12px;
   padding: 9px 0;
-  border-top: 1px solid var(--rule);
+  border-top: 1px solid var(--dark-rule);
 }
 
 .result {
@@ -123,7 +127,6 @@
   background: var(--no-wash);
   color: var(--no);
   padding: 8px 10px;
-  border-radius: 4px;
   overflow-wrap: anywhere;
 }
 
@@ -134,8 +137,13 @@
   letter-spacing: 0.04em;
   padding: 8px 14px;
   border: 3px solid;
-  border-radius: 4px;
   transform: rotate(-2deg);
+}
+
+@media (max-width: 620px) {
+  .request { grid-template-columns: 1fr; gap: 8px; }
+  .tabs button { font-size: 12px; }
+  .tabs b { display: block; margin: 7px 0 0; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
