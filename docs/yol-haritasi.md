@@ -44,13 +44,16 @@ Başvuru ve pilot görüşmeleri için sayı gerekiyor.
 - İkinci üretici (Juniper) için en az bir uçtan uca test.
 - Bitti: her yeni tür için bir kabul ve bir ret senaryosu CI'da.
 
-## 6. Pull request botu
+## 6. Pull request botu (kapandı, Ekim 2026)
 
 Ürünün asıl biçimi: yapılandırma reposundaki her PR'a otomatik etki raporu.
 
 - PR'daki değişikliği aday snapshot olarak al, raporu PR yorumu olarak yaz, ihlalde kontrolü kırmızı yap.
 - İstekten değişiklik üreten akış ayrı bir komut ya da etiketle tetiklensin.
 - Bitti: örnek bir yapılandırma reposunda açılan PR'a rapor yorumu düşüyor.
+- Kanıt (denetçi onaylı): deneme PR #1'de ihlalli commit'te `etki-raporu` kırmızı ve gerçek Batfish karşı örnekli rapor yorumu düştü; dar kuralla aynı yorum güncellendi ve kontrol yeşile döndü. Bileşenler: `kanit check` (model çağrısız doğrulama; değişmezler hedef daldan, değişmez silen ya da gevşeten PR reddedilir, sembolik bağlantı ve `..` içeren yollar reddedilir), `.github/actions/kanit-check`, `kanit-pr.yml`, `/kanit plan` yorum komutu (`kanit-plan.yml`, canlı Claude'la henüz koşmadı; madde 1'e bağlı).
+- Açık kararlar (Gökay): değişmez silmek için istisna yolu (etiket / CODEOWNERS / ayrı PR türü); fork PR'larına yorum; plan akışı commit atsın mı; dış repolarda eylemi SHA'ya sabitleme yönergesi; Marketplace.
+- Not: bu repoda deneme PR'ları `examples/acme`'yi değiştirince testlerin fikstürü bozulur; deneme için ayrı bir örnek ağ gerekir (madde 5).
 
 ## 7. Sağlamlık
 
