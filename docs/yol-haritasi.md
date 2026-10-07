@@ -66,7 +66,9 @@ Başvuru ve pilot görüşmeleri için sayı gerekiyor.
 
 ## 8. Site ve yayın (karar Gökay'da)
 
-- Ürün adı, alan adı, e-posta: `site/site.config.ts` içinde hâlâ yer tutucu. "Demo isteyin" düğmesi geçersiz adrese gidiyor.
+- Ürün adı NetLemma, alan adı netlemma.com, e-posta gokay@netlemma.com olarak kararlaştırıldı ve `site/site.config.ts` içine işlendi (Ekim 2026).
+- Repo private olduğu için sitedeki kaynak kod bağlantıları ve "kendi makinenizde çalıştırın" çağrısı kaldırıldı; `site.config.ts` içinde `repo` doldurulursa geri gelir.
+- Açık: `www.netlemma.com` için DNS kaydı yok; alan adında MX/SPF/DMARC kaydı görünmüyor (dışarıdan posta teslimi doğrulanmalı); CLI ve paket adı hâlâ `kanit`.
 - Yayın yeri (Vercel vb.), lisans dosyası, kısa demo videosu.
 - Bitti: site alan adında yayında, iletişim adresi çalışıyor.
 - Yapıldı (Ekim 2026, denetçi onaylı): paylaşım görseli (TR/EN, gerçek Batfish kaydından), demo kaydı için yer tutucu (`site.config.ts` → `demoVideo`), iki dilli 404 sayfası (Next `experimental.globalNotFound`), erişilebilirlik düzeltmeleri (axe 0 ihlal, 1280/390/320 px). Madde açık: kalanların hepsi yukarıdaki kararlara bağlı.

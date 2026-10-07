@@ -11,12 +11,12 @@ export const tr: Dictionary = {
   lang: "tr",
   otherLang: { label: "English", href: "/en/" },
   meta: {
-    title: "Kanıt: doğrulanmış ağ değişiklikleri",
+    title: "NetLemma: doğrulanmış ağ değişiklikleri",
     description:
       "Claude ağ değişikliğini yazar, Batfish canlıya çıkmadan önce biçimsel olarak doğrular.",
   },
   og: {
-    alt: "Kanıt: ağ değişikliğini canlıya çıkmadan kanıtlayın. Örnek kayıtta dar erişim listesi satırı Batfish doğrulamasından geçip kabul ediliyor.",
+    alt: "NetLemma: ağ değişikliğini canlıya çıkmadan kanıtlayın. Örnek kayıtta dar erişim listesi satırı Batfish doğrulamasından geçip kabul ediliyor.",
     label: "Örnek değişiklik kaydı, tur 2",
   },
   skipLink: "İçeriğe geç",
@@ -86,6 +86,8 @@ export const tr: Dictionary = {
     body: "Kayıt eklenene kadar aynı akışı kendi makinenizde çalıştırabilirsiniz: fazla geniş öneri karşı örnekle reddedilir, dar olan kabul edilir. Docker ve Python yeterli, API anahtarı gerekmez.",
     commandLabel: "Komut",
     setupLink: "Kurulum adımları",
+    requestBody: "Kayıt eklenene kadar aynı akışı sizin için canlı çalıştırabiliriz: fazla geniş öneri karşı örnekle reddedilir, dar olan kabul edilir.",
+    requestLink: "Canlı gösterim isteyin",
   },
   proves: {
     title: "Neyi kanıtlar",

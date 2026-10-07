@@ -1,6 +1,6 @@
-# Kanıt
+# NetLemma (kod adı: kanit)
 
-Claude ağ değişikliğini yazar, Batfish canlıya çıkmadan doğrular. Amaç: çalışan bir prototipi pilot müşteriye gösterilebilir hâle getirmek ve Claude for Startups başvurusuna zemin hazırlamak. "Kanıt" geçici addır.
+Claude ağ değişikliğini yazar, Batfish canlıya çıkmadan doğrular. Amaç: çalışan bir prototipi pilot müşteriye gösterilebilir hâle getirmek ve Claude for Startups başvurusuna zemin hazırlamak. Ürün ve şirket adı NetLemma'dır (netlemma.com); komut satırı aracı, Python paketi ve repo şimdilik `kanit` adını taşır.
 
 Açık işler ve öncelik sırası: `docs/yol-haritasi.md`. Yeni işe başlamadan önce onu oku.
 

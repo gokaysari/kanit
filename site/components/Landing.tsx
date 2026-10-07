@@ -12,8 +12,8 @@ function mailto(subject: string) {
 export function Landing({ dict }: { dict: Dictionary }) {
   const otherLang = dict.lang === "tr" ? "en" : "tr";
   const labels = dict.lang === "tr"
-    ? { eyebrow: "Doğrulanmış ağ değişiklikleri", record: "Canlı kanıt kaydı", process: "Süreç / 03 adım", field: "Sahada çalıştır", scope: "Kanıtın sınırı", chapter: "Bölüm", availability: "Pilot erişimi açık" }
-    : { eyebrow: "Verified network changes", record: "Live proof record", process: "Process / 03 steps", field: "Run it locally", scope: "Boundary of proof", chapter: "Chapter", availability: "Pilot access is open" };
+    ? { eyebrow: "Doğrulanmış ağ değişiklikleri", record: "Canlı kanıt kaydı", process: "Süreç / 03 adım", field: site.repo ? "Sahada çalıştır" : "Canlı gösterim", scope: "Kanıtın sınırı", chapter: "Bölüm", availability: "Pilot erişimi açık" }
+    : { eyebrow: "Verified network changes", record: "Live proof record", process: "Process / 03 steps", field: site.repo ? "Run it locally" : "Live walkthrough", scope: "Boundary of proof", chapter: "Chapter", availability: "Pilot access is open" };
 
   return (
     <div className={styles.page}>
@@ -22,7 +22,7 @@ export function Landing({ dict }: { dict: Dictionary }) {
       </a>
       <header className={styles.top}>
         <a className={styles.mark} href={dict.lang === "tr" ? "/" : "/en/"} aria-label={site.name}>
-          <span className={styles.markGlyph}>K</span>
+          <span className={styles.markGlyph}>N</span>
           <span>{site.name}</span>
         </a>
         <nav className={styles.nav} aria-label={dict.nav.label}>
@@ -44,12 +44,12 @@ export function Landing({ dict }: { dict: Dictionary }) {
         <section className={styles.hero}>
           <div className={styles.heroGrid}>
             <p className={styles.eyebrow}>
-              <span>NETLEMMA / KANIT</span>
+              <span>{site.name.toUpperCase()}</span>
               <span>2026 — 001</span>
             </p>
             <h1 className={styles.title}>{dict.hero.title}</h1>
             <div className={styles.heroFoot}>
-              <p className={styles.heroIndex}>[ K / 01 ]</p>
+              <p className={styles.heroIndex}>[ N / 01 ]</p>
               <div>
                 <p className={styles.lede}>{dict.hero.lede}</p>
                 <div className={styles.heroActions}>
@@ -113,7 +113,7 @@ export function Landing({ dict }: { dict: Dictionary }) {
             <p>{labels.field}</p>
           </div>
           <div className={styles.demoInner}>
-            <DemoSlot demo={dict.demo} />
+            <DemoSlot demo={dict.demo} requestHref={mailto(`${site.name} demo`)} />
           </div>
         </section>
 
@@ -154,10 +154,10 @@ export function Landing({ dict }: { dict: Dictionary }) {
 
       <footer className={styles.footer}>
         <div>
-          <span>© {new Date().getFullYear()} {site.name} / Netlemma</span>
+          <span>© {new Date().getFullYear()} {site.name}</span>
           <span>
-          {dict.footer.builtOn} <a href={site.batfish}>Batfish</a> {dict.footer.and}{" "}
-          <a href={site.repo}>{dict.footer.source}</a>
+          {dict.footer.builtOn} <a href={site.batfish} lang="en">Batfish</a> {dict.footer.and}
+          {site.repo && <> <a href={site.repo}>{dict.footer.source}</a></>}
           </span>
         </div>
       </footer>

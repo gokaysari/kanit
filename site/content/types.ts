@@ -38,6 +38,8 @@ export type Dictionary = {
     body: string;
     commandLabel: string;
     setupLink: string;
+    requestBody: string;
+    requestLink: string;
   };
   proves: { title: string; items: string[] };
   limits: { title: string; items: string[] };
