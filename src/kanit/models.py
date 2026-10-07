@@ -147,7 +147,10 @@ class CheckResult:
     kind: str  # "invariant" | "intent"
     passed: bool
     counterexample: str | None = None
-    preexisting: bool = False  # değişmez, değişiklikten önce de ihlal ediliyordu
+    # Değişmez önceden de ihlal ediliyordu VE aday ihlali genişletmiyor (Batfish ile
+    # kanıtlandı). Yalnızca bu durumda ihlal kabulü engellemez; bkz.
+    # BatfishVerifier._classify_preexisting.
+    preexisting: bool = False
 
 
 @dataclass

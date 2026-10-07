@@ -338,3 +338,59 @@ def test_cli_without_api_key_exits_with_message(monkeypatch, capsys, tmp_path):
     code = cli.main(["plan", "db aç", "--snapshot", str(ACME), "--out", str(tmp_path / "r.md")])
     assert code == 2
     assert "ANTHROPIC_API_KEY tanımlı değil" in capsys.readouterr().err
+
+
+# --- önceden var olan ihlalin sınıflandırılması (BatfishVerifier._widening) ----------
+# Kanıt değildir (gerçek Batfish testi: test_preexisting_batfish.py); yalnızca örnek
+# satırların sınıflandırılmasında kapalı yönde karar verildiğini sabitler.
+
+
+def fake_bf(rows):
+    import pandas as pd
+
+    def traces(*disps):
+        return [SimpleNamespace(disposition=d) for d in disps]
+
+    frame = pd.DataFrame(
+        [{"Flow": f, "Reference_Traces": traces(*b), "Snapshot_Traces": traces(*a)}
+         for f, b, a in rows],
+        columns=["Flow", "Reference_Traces", "Snapshot_Traces"],
+    )
+    answer = SimpleNamespace(answer=lambda **kw: SimpleNamespace(frame=lambda: frame))
+    return SimpleNamespace(q=SimpleNamespace(differentialReachability=lambda **kw: answer))
+
+
+SSH_ALL = FlowCheck("ssh", "@enter(core[GigabitEthernet0/1])", "10.20.20.0/24", "blocked",
+                    "10.10.10.0/24", "TCP", "22")
+
+
+@pytest.mark.parametrize(
+    "rows, widened",
+    [
+        ([], False),  # fark yok: kanıt
+        ([("f20", ["DELIVERED_TO_SUBNET"], ["DENIED_OUT"])], False),  # yalnızca daralma
+        ([("f30", ["DENIED_OUT"], ["DELIVERED_TO_SUBNET"])], True),  # genişleme
+        ([("f20", ["DELIVERED_TO_SUBNET"], ["DENIED_OUT"]),
+          ("f30", ["DENIED_OUT"], ["DELIVERED_TO_SUBNET"])], True),  # daralma arkasında
+        ([("f", ["DENIED_OUT"], ["DENIED_OUT", "ACCEPTED"])], True),  # çok yollu, yeni yol
+        ([("f", ["DENIED_OUT"], ["YENI_DURUM"])], True),  # bilinmeyen disposition
+        ([("f", ["DENIED_OUT"], [])], True),  # boş iz
+        ([("f", ["ACCEPTED"], ["DELIVERED_TO_SUBNET"])], True),  # iki tarafta da ihlal
+    ],
+)
+def test_widening_classification_fails_closed(rows, widened):
+    from kanit.verifier import BatfishVerifier
+
+    result = BatfishVerifier._widening(fake_bf(rows), SSH_ALL)
+    assert (result is not None) == widened, result
+
+
+def test_reachable_invariant_widening_is_flow_that_stops_reaching():
+    from kanit.verifier import BatfishVerifier
+
+    https = FlowCheck("https", "@enter(core[GigabitEthernet0/1])", "10.20.20.0/24",
+                      "reachable", "10.10.10.0/24", "TCP", "443")
+    lost = [("f10", ["DELIVERED_TO_SUBNET"], ["DENIED_OUT"])]
+    gained = [("f30", ["DENIED_OUT"], ["DELIVERED_TO_SUBNET"])]
+    assert "f10" in BatfishVerifier._widening(fake_bf(lost), https)
+    assert BatfishVerifier._widening(fake_bf(gained), https) is None
