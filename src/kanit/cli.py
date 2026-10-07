@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 import socket
@@ -16,6 +17,7 @@ from .verifier import BatfishVerifier
 
 # Batfish'in pybatfish (v2) portu ve ön kontrol için bağlantı süresi (saniye).
 # pybatfish kendi başına 30 sn x yeniden deneme bekler; ön kontrol bunu kısaltır.
+# KANIT_BATFISH_TIMEOUT ile değiştirilebilir (ör. testlerde 0.5).
 BATFISH_PORT = 9996
 BATFISH_CONNECT_TIMEOUT = 5.0
 
@@ -34,11 +36,13 @@ def _os_reason(exc: OSError) -> str:
     if isinstance(exc, IsADirectoryError):
         return "dosya değil, klasör"
     if isinstance(exc, PermissionError):
-        return "okuma izni yok"
+        return "erişim izni yok"
     if isinstance(exc, TimeoutError):
         return "zaman aşımı"
     if isinstance(exc, ConnectionRefusedError):
         return "bağlantı reddedildi"
+    if isinstance(exc, socket.gaierror):
+        return "ana makine adı çözülemedi"
     return _one_line(exc) or type(exc).__name__
 
 
@@ -46,9 +50,10 @@ def _check_snapshot(snapshot: Path) -> None:
     try:
         read_configs(snapshot)
         read_invariants(snapshot)
-    except (OSError, ValueError, KeyError, TypeError) as exc:
+    except Exception as exc:  # noqa: BLE001 - her okuma hatası "çalışmadı" (2) sayılır
+        reason = _os_reason(exc) if isinstance(exc, OSError) else _one_line(exc)
         raise _NotRun(
-            f"Snapshot okunamadı ({snapshot}): {_one_line(exc)}. --snapshot ile "
+            f"Snapshot okunamadı ({snapshot}): {type(exc).__name__}: {reason}. --snapshot ile "
             f"'{CONFIG_DIR}/' klasörü ve geçerli policy.json içeren klasörü ver."
         ) from None
 
@@ -76,16 +81,56 @@ def _scripted(paths: list[Path]) -> ScriptedProposer:
     return ScriptedProposer(paths)
 
 
+def _check_batfish_host(host: str) -> None:
+    """pybatfish yalnızca ana makine adı ya da IP alır; port ve şema sabittir."""
+    try:
+        ipaddress.ip_address(host)
+        return
+    except ValueError:
+        pass
+    if not host or any(ch in host for ch in ":/@ "):
+        raise _NotRun(
+            f"--batfish-host geçersiz ({host!r}): yalnızca ana makine adı ya da IP olmalı "
+            f"(şema ve port yazma; port {BATFISH_PORT} sabit). Örn. --batfish-host localhost"
+        )
+
+
+def _connect_timeout() -> float:
+    raw = os.environ.get("KANIT_BATFISH_TIMEOUT")
+    if raw is None:
+        return BATFISH_CONNECT_TIMEOUT
+    try:
+        value = float(raw)
+    except ValueError:
+        value = 0.0
+    if value <= 0:
+        raise _NotRun(
+            f"KANIT_BATFISH_TIMEOUT geçersiz ({raw!r}): saniye cinsinden pozitif bir sayı ver."
+        )
+    return value
+
+
 def _check_batfish(host: str) -> None:
     """Batfish'e kısa süreli TCP ön kontrolü; ulaşılamazsa uzun bekleme yerine hemen durur."""
+    _check_batfish_host(host)
     try:
-        socket.create_connection((host, BATFISH_PORT), timeout=BATFISH_CONNECT_TIMEOUT).close()
+        socket.create_connection((host, BATFISH_PORT), timeout=_connect_timeout()).close()
     except OSError as exc:
         raise _NotRun(
             f"Batfish'e ulaşılamadı ({host}:{BATFISH_PORT}, {_os_reason(exc)}). "
             "Batfish'i başlat (make batfish) ya da --batfish-host / BATFISH_HOST ile "
             "doğru adresi ver."
         ) from None
+
+
+def _positive_int(text: str) -> int:
+    try:
+        value = int(text)
+    except ValueError:
+        value = 0
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"en az 1 olmalı: {text!r}")
+    return value
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -99,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
     plan.add_argument(
         "--batfish-host", default=os.environ.get("BATFISH_HOST", "localhost")
     )
-    plan.add_argument("--max-rounds", type=int, default=3)
+    plan.add_argument("--max-rounds", type=_positive_int, default=3)
     plan.add_argument("--model", default=None, help="Varsayılan: KANIT_MODEL ya da sonnet")
     plan.add_argument(
         "--scripted",
@@ -130,7 +175,18 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if result is None:
         return 2
-    args.out.write_text(report.render(result))
+    decision = "kabul edildi" if result.accepted else "reddedildi"
+    if result.error:
+        decision = "doğrulama tamamlanmadı"
+    try:
+        args.out.write_text(report.render(result))
+    except OSError as exc:
+        print(
+            f"Değişiklik {decision} ama rapor yazılamadı ({args.out}: {_os_reason(exc)}). "
+            "--out ile yazılabilir bir yol verip yeniden çalıştır.",
+            file=sys.stderr,
+        )
+        return 2
     for n, r in enumerate(result.rounds, 1):
         spent = f" ({r.usage.describe()})" if r.usage.calls else ""
         print(f"Tur {n}: {'KABUL' if r.verdict.accepted else 'RET'}{spent}")
@@ -144,8 +200,23 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if result.accepted and args.apply:
+        written = []
         for name, text in result.final.candidate_configs.items():
-            (args.snapshot / CONFIG_DIR / name).write_text(text)
+            target = args.snapshot / CONFIG_DIR / name
+            if target.is_file() and target.read_text() == text:
+                continue
+            try:
+                target.write_text(text)
+            except OSError as exc:
+                done = ", ".join(written) or "hiçbiri"
+                print(
+                    f"Değişiklik kabul edildi ama snapshot'a yazılamadı ({target}: "
+                    f"{_os_reason(exc)}; yazılan dosyalar: {done}). Yazma iznini düzeltip "
+                    f"yeniden çalıştır ya da farkı {args.out} raporundan elle uygula.",
+                    file=sys.stderr,
+                )
+                return 2
+            written.append(name)
         print("Değişiklik snapshot'a yazıldı.")
     return 0 if result.accepted else 1
 
