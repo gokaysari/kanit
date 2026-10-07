@@ -21,12 +21,14 @@ cd site && npm run typecheck && npm run build
 ## Mimari
 
 - `src/kanit/models.py`: `FlowCheck`, `Proposal`, `Verdict`. Kabul kuralı `Verdict.accepted` içinde.
-- `src/kanit/proposer.py`: `ClaudeProposer` (Anthropic SDK, zorunlu `propose_change` aracı) ve `ScriptedProposer`.
-- `src/kanit/verifier.py`: `BatfishVerifier`; mevcut ve aday snapshot'ı yükler, kontrolleri çalıştırır.
+- `src/kanit/proposer.py`: `ClaudeProposer` (Anthropic SDK; `propose_change` aracı `tool_choice: auto` + `strict`, çünkü varsayılan model zorunlu araç seçimini 400 ile reddeder) ve `ScriptedProposer`.
+- `src/kanit/verifier.py`: `BatfishVerifier`; mevcut ve aday snapshot'ı yükler, kontrolleri çalıştırır. Önceden var olan ihlal yalnızca genişlemediği kanıtlanırsa kabulü engellemez (`_classify_preexisting`).
 - `src/kanit/loop.py`: öner, doğrula, karşı örnekle düzelt döngüsü.
 - `src/kanit/snapshot.py`: düzenlemeleri uygular; `old` metni dosyada tam bir kez geçmek zorunda.
+- `src/kanit/review.py`: `kanit check`, model çağrısı olmadan PR doğrulaması; `.github/actions/kanit-check` ve `kanit-pr.yml` bunu PR yorumu olarak yazar.
+- Çıkış kodu sözleşmesi: 0 kabul, 1 ret, 2 doğrulama çalışmadı.
 - `examples/acme/`: örnek ağ, `policy.json` (değişmezler), `scripted/` (kayıtlı öneriler).
-- `site/`: Next.js tanıtım sitesi; metinler `content/`, kimlik bilgileri `site.config.ts`.
+- `site/`: Next.js App Router tanıtım sitesi, vinext ile Cloudflare Workers'a (OpenAI Sites) derlenir; çalışma anında dosya sistemi yoktur. Metinler `content/`, kimlik bilgileri `site.config.ts`. Yayını Gökay Sites üzerinden yapar.
 
 ## Kurallar
 
@@ -41,36 +43,34 @@ cd site && npm run typecheck && npm run build
 
 - Commit'ler `gokaysari <gokaysari999@gmail.com>` kimliğiyle atılır (bu klonda yerel olarak ayarlı). Başka kimlik kullanma.
 - Claude ortak yazar olarak eklenir: `Co-Authored-By: Claude <noreply@anthropic.com>`.
-- `main`'e force-push yapma. CI (`.github/workflows/ci.yml`) her push'ta Batfish testlerini ve site derlemesini koşar; kırmızıyken yeni iş ekleme.
+- `main` korumalı: force-push ve silme yasak, `test` ve `site` kontrolleri zorunlu. Değişiklikler main'e PR üzerinden, CI yeşilken girer. CI (`.github/workflows/ci.yml`) Batfish testlerini ve site derlemesini koşar; kırmızıyken yeni iş ekleme.
 
-## Ajanlar
+## Ajanlar ve iş akışları
 
-Her yol haritası maddesinin `.claude/agents/` altında kendi ajanı var. Ana oturum işi ilgili ajana verir, kendisi yapmaz; ajanlar push etmez.
+Ana oturum orkestratördür: işi ilgili ajana verir, kendisi yapmaz (Gökay aksini söylemedikçe). Ajanlar yol haritası maddelerine değil iş akışlarına göre tanımlıdır; her biri işini uçtan uca yürütür (hazırlık, yeniden üretme, uygulama, gerçek Batfish/derleme ile kanıt, öz denetim, commit, rapor) ve push etmez.
 
-| Madde | Ajan | Not |
-|---|---|---|
-| 1 | `canli-yol` | API anahtarı gerekir |
-| 2 | `niyet-kontrolleri` | 1'den sonra |
-| 3 | `yan-etki-kapisi` | 2'den sonra |
-| 4 | `degerlendirme` | ayrı worktree; anlamlı sonuç için 1-3 bitmiş olmalı |
-| 5 | `ag-kapsami` | ayrı worktree |
-| 6 | `pr-botu` | ayrı worktree |
-| 7 | `saglamlik` | çekirdek dosyalara dokunur; 1-3 ile aynı anda çalıştırma |
-| 8 | `site` | ayrı worktree |
-| - | `denetci` | salt okunur; her madde kapanmadan önce |
-
-Rol ajanları maddeler arasında çalışır; madde ajanlarının yerine geçmez, onlara tasarım, inceleme ve iş tanımı sağlar:
-
-| Rol | Ajan | Alan | Yazdığı yer |
+| İş akışı | Ajan | Yazdığı yer | Yol haritası |
 |---|---|---|---|
-| Kıdemli mühendis | `kidemli-muhendis-dogrulama` | doğrulama çekirdeği, kabul kuralı, Batfish anlamı (2, 3, 5, 7) | `src/kanit` çekirdeği, testler; ana ağaçta, çekirdek işlerle sırayla |
-| Kıdemli mühendis | `kidemli-muhendis-platform` | Claude API yolu, CLI, PR botu, CI, eval düzeneği (1, 4, 6, 7) | ayrı worktree |
-| Ürün uzmanı | `urun-uzmani` | kullanıcı, pilot, demo, rapor okunabilirliği, kabul kriterleri | yalnızca `docs/urun/`, ayrı worktree |
-| İş analisti | `is-analisti` | pazar, müşteri profili, değer modeli, fiyat hipotezi, başvuru taslağı | yalnızca `docs/is/`, ayrı worktree |
+| Doğrulama çekirdeği | `dogrulama-muhendisi` | `verifier.py`, `models.py`, `loop.py`, `snapshot.py`, `examples/` | 2 (doğrulama), 3, 5, 7 (çekirdek) |
+| Claude ile değişiklik üretme | `model-muhendisi` | `proposer.py`, canlı testler | 1, 2 (model tarafı) |
+| Platform ve teslim | `platform-muhendisi` | `cli.py`, `report.py`, `review.py`, `.github/`, `Makefile`, `pyproject.toml` | 6, 7 (platform) |
+| Değerlendirme | `degerlendirme` | `evals/`, `make eval` | 4 |
+| Site ve demo | `site` | `site/` | 8 |
+| Ürün | `urun-uzmani` | yalnızca `docs/urun/` | kabul kriterleri, pilot, demo senaryosu |
+| İş | `is-analisti` | yalnızca `docs/is/` | başvuru, pazar, riskler |
+| Denetim | `denetci` | hiçbir dosya (salt okunur) | her iş birleşmeden önce |
 
-- Çekirdeğe dokunan bir madde ajanının işi, denetçiden önce `kidemli-muhendis-dogrulama` tarafından incelenebilir; platform işleri için `kidemli-muhendis-platform`. İnceleme denetçinin yerine geçmez.
-- `urun-uzmani` ve `is-analisti` kod değiştirmez, karar vermez; seçenek ve gerekçe hazırlar, kararları `docs/*/kararlar.md` içinde Gökay'a bırakır. Uydurma görüşme, müşteri ya da kaynaksız sayı yazmazlar.
+Teslim akışı (her iş için):
 
-- 1, 2, 3 ve 7 aynı çekirdek dosyaları (`models.py`, `verifier.py`, `loop.py`) değiştirir; sırayla çalıştır.
-- Worktree'de çalışan ajanlar (4, 5, 6, 8) birbirleriyle ve çekirdek işlerle aynı anda koşabilir. Yeni worktree'de `.venv` yoktur; önce `make setup` gerekir. Bitince dalı ana oturum birleştirir.
-- Bir madde, `denetci` "ölçüt sağlandı" demeden kapatılmaz ve push edilmez. Kapanınca `docs/yol-haritasi.md` güncellenir.
+1. Ana oturum işi ve bitti ölçütünü yazıp ajana verir. Yazan ajanların hepsi ayrı worktree'de, `origin/main`'den başlar.
+2. Ajan uçtan uca çalışır, commit atar, raporlar.
+3. `denetci` bağımsız denetler. "Ölçüt sağlanmadı" ise bulgular aynı ajana döner; bu, denetçi onaylayana kadar tekrarlanır.
+4. Ana oturum dalı push eder, PR açar, CI yeşilse birleştirir, main CI'ını kontrol eder, `docs/yol-haritasi.md`'yi günceller.
+
+Kurallar:
+
+- Çekirdek dosyalara (`models.py`, `verifier.py`, `loop.py`) aynı anda yalnızca bir iş dokunur. Diğer akışlar paralel koşabilir.
+- Worktree'lerde önce `make setup`; testler `COMPOSE_PROJECT_NAME=kanit make test` ile koşulur (mevcut Batfish kapsayıcısını kullanır, port çakışmaz).
+- Ücretli API çağrıları (canlı test, değerlendirme) ana oturumun onayıyla yapılır. API anahtarı yalnızca macOS Anahtar Zinciri'nden (`kanit-anthropic`) komut anında okunur; dosyaya yazılmaz.
+- Denetlenmemiş araştırma `arastirma/*` dallarında durur (`dogrulama`, `platform`, `urun`, `is`); kullanılmadan önce `denetci` kaynaklarını sınar.
+- Bir madde, `denetci` "ölçüt sağlandı" demeden kapatılmaz ve main'e girmez.
