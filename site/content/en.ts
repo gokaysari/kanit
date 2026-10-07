@@ -11,12 +11,12 @@ export const en: Dictionary = {
   lang: "en",
   otherLang: { label: "Türkçe", href: "/" },
   meta: {
-    title: "Kanıt: verified network changes",
+    title: "NetLemma: verified network changes",
     description:
       "Claude writes the network change and Batfish formally verifies it before it goes live.",
   },
   og: {
-    alt: "Kanıt: prove a network change before it goes live. In the example record, a narrow access-list line passes Batfish verification and is accepted.",
+    alt: "NetLemma: prove a network change before it goes live. In the example record, a narrow access-list line passes Batfish verification and is accepted.",
     label: "Example change record, round 2",
   },
   skipLink: "Skip to content",
@@ -86,6 +86,8 @@ export const en: Dictionary = {
     body: "Until it is, you can run the same flow on your own machine: the overly broad proposal is rejected with a counterexample and the narrow one is accepted. Docker and Python are enough; no API key needed.",
     commandLabel: "Command",
     setupLink: "Setup steps",
+    requestBody: "Until it is, we can run the same flow for you live: the overly broad proposal is rejected with a counterexample and the narrow one is accepted.",
+    requestLink: "Request a live walkthrough",
   },
   proves: {
     title: "What it proves",

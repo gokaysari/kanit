@@ -1,4 +1,6 @@
-# Kanıt (geçici ad)
+# NetLemma
+
+Ürün ve şirket adı NetLemma (netlemma.com). Komut satırı aracı ve Python paketi şimdilik `kanit` adını taşıyor.
 
 Claude ağ değişikliğini yazar, [Batfish](https://github.com/batfish/batfish) canlıya çıkmadan önce doğrular. Yalnızca doğrulamadan geçen değişiklik kabul edilir.
 
