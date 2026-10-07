@@ -1,9 +1,15 @@
-// Paylaşım (Open Graph) görseli. Derleme sırasında her dil için bir kez PNG olarak üretilir;
-// metinler sözlükten, ad site.config.ts'den gelir, yani ad değişince görsel de değişir.
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-
+// Paylaşım (Open Graph) görseli; her dil için bir PNG üretir.
+// Metinler sözlükten, ad site.config.ts'den gelir, yani ad değişince görsel de değişir.
 import { ImageResponse } from "next/og";
+
+// Yazı tipleri derleme sırasında pakete gömülür (Vite `?inline`, base64 veri adresi).
+// Site Cloudflare Workers'ta çalışır; orada node_modules'tan dosya okunamaz.
+import condLatinUrl from "@fontsource/ibm-plex-sans-condensed/files/ibm-plex-sans-condensed-latin-700-normal.woff?inline";
+import condExtUrl from "@fontsource/ibm-plex-sans-condensed/files/ibm-plex-sans-condensed-latin-ext-700-normal.woff?inline";
+import sansLatinUrl from "@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-500-normal.woff?inline";
+import sansExtUrl from "@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-ext-500-normal.woff?inline";
+import monoLatinUrl from "@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff?inline";
+import monoExtUrl from "@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-ext-400-normal.woff?inline";
 
 import { NARROW_LINE } from "@/content/record";
 import type { Dictionary } from "@/content/types";
@@ -29,19 +35,22 @@ const CONDENSED = "Cond, CondExt";
 const SANS = "Sans, SansExt";
 const MONO = "Mono, MonoExt";
 
-async function font(pkg: string, file: string) {
-  return readFile(join(process.cwd(), "node_modules/@fontsource", pkg, "files", file));
+function font(dataUrl: string): ArrayBuffer {
+  const bytes = Uint8Array.from(atob(dataUrl.slice(dataUrl.indexOf(",") + 1)), (c) =>
+    c.charCodeAt(0),
+  );
+  return bytes.buffer;
 }
 
 async function fonts() {
-  const [condLatin, condExt, sansLatin, sansExt, monoLatin, monoExt] = await Promise.all([
-    font("ibm-plex-sans-condensed", "ibm-plex-sans-condensed-latin-700-normal.woff"),
-    font("ibm-plex-sans-condensed", "ibm-plex-sans-condensed-latin-ext-700-normal.woff"),
-    font("ibm-plex-sans", "ibm-plex-sans-latin-500-normal.woff"),
-    font("ibm-plex-sans", "ibm-plex-sans-latin-ext-500-normal.woff"),
-    font("ibm-plex-mono", "ibm-plex-mono-latin-400-normal.woff"),
-    font("ibm-plex-mono", "ibm-plex-mono-latin-ext-400-normal.woff"),
-  ]);
+  const [condLatin, condExt, sansLatin, sansExt, monoLatin, monoExt] = [
+    condLatinUrl,
+    condExtUrl,
+    sansLatinUrl,
+    sansExtUrl,
+    monoLatinUrl,
+    monoExtUrl,
+  ].map(font);
   return [
     { name: "Cond", data: condLatin, weight: 700 as const },
     { name: "CondExt", data: condExt, weight: 700 as const },

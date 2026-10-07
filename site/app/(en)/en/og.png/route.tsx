@@ -1,4 +1,4 @@
-// Statik çıktıda out/en/og.png olarak yazılır; uzantılı dosya statik sunucularda image/png döner.
+// Paylaşım görseli; Workers üzerinde istek anında üretilir (yazı tipleri pakete gömülü, bkz. app/og.tsx).
 import { renderOgImage } from "@/app/og";
 import { en } from "@/content/en";
 
