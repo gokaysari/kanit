@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from pathlib import Path
 from typing import Protocol
@@ -41,6 +42,31 @@ def _disposition(traces) -> str:
         return "?"
 
 
+_LOCATION_ANY = re.compile(
+    r"(InterfaceLinkLocation|InterfaceLocation)\{nodeName=([^,{}\"]+), "
+    r"interfaceName=([^{}\"]+)\}"
+)
+_LOCATION = re.compile(f"^{_LOCATION_ANY.pattern}$")
+
+
+class _Unresolved(Exception):
+    """Başlangıç konumları güvenilir biçimde çözülemedi; kapalı yönde karar verilir."""
+
+
+def _location_list(value) -> list[str]:
+    """resolveIpsOfLocationSpecifier'ın 'Locations' hücresi: liste ya da "[a, b]" metni.
+
+    Metin, tanınan konumların ", " ile birleşimine birebir eşit değilse çözülemedi
+    sayılır (bir konumu sessizce atlamamak için)."""
+    if isinstance(value, (list, tuple)):
+        return [str(v) for v in value]
+    text = str(value)
+    found = [m.group(0) for m in _LOCATION_ANY.finditer(text)]
+    if f"[{', '.join(found)}]" != text:
+        raise _Unresolved(f"konum listesi okunamadı: {text[:200]}")
+    return found
+
+
 def _dispositions(traces) -> set[str]:
     """Bir akışın tüm izlerindeki disposition'lar (çok yollu akışta birden fazla)."""
     return {str(t.disposition) for t in traces}
@@ -73,8 +99,10 @@ class BatfishVerifier:
                 for check in checks:
                     example = self._violation(bf, check, "cand")
                     result = CheckResult(check, kind, example is None, example)
-                    if example is not None and kind == "invariant":
+                    if kind == "invariant" and example is not None:
                         self._classify_preexisting(bf, result)
+                    elif kind == "invariant" and check.expect == "reachable":
+                        self._check_lost_locations(bf, result)
                     verdict.checks.append(result)
             verdict.changed_flows = self._changed_flows(bf)
             return verdict
@@ -114,13 +142,17 @@ class BatfishVerifier:
         return "FAILURE" if check.expect == "reachable" else "SUCCESS"
 
     @classmethod
-    def _violation(cls, bf, check: FlowCheck, snapshot: str) -> str | None:
-        """Beklentiyi bozan bir akış varsa onu döndürür; yoksa None (kanıtlandı)."""
+    def _violation(
+        cls, bf, check: FlowCheck, snapshot: str, start: str | None = None
+    ) -> str | None:
+        """Beklentiyi bozan bir akış varsa onu döndürür; yoksa None (kanıtlandı).
+
+        `start` verilirse değişmezin başlangıç noktası yerine o konumlarda aranır."""
         from pybatfish.datamodel.flow import PathConstraints
 
         df = (
             bf.q.reachability(
-                pathConstraints=PathConstraints(startLocation=check.start),
+                pathConstraints=PathConstraints(startLocation=start or check.start),
                 headers=cls._headers(check),
                 actions=cls._bad_actions(check),
             )
@@ -135,37 +167,158 @@ class BatfishVerifier:
     def _classify_preexisting(self, bf, result: CheckResult) -> None:
         """Adayda ihlal edilen değişmezin önceden var olan ihlal sayılıp sayılmayacağı.
 
-        Garanti: `preexisting=True` yalnızca şu iki şey kanıtlandığında konur:
-        (1) değişmezin başlık uzayında (başlangıç noktası, src, dst, protokol, port)
-        mevcutta beklentiyi sağlayıp adayda bozan hiçbir akış yoktur; yani adayın ihlal
-        kümesi mevcudun ihlal kümesinin alt kümesidir (ihlal genişlemedi; daralmış ya da
-        aynı kalmış olabilir), ve (2) mevcut snapshot gerçekten bu değişmezi ihlal ediyor.
-        Genişleme varsa sonuç ihlaldir ve karşı örnek, adayda YENİ bozulan akıştır
-        (adayın rastgele bir ihlal örneği değil).
+        Garanti: `preexisting=True` yalnızca şunların hepsi gösterildiğinde konur:
+        (1) Başlangıç konumları: değişmezin `start`'ının adayda çözüldüğü her etkin konum,
+            mevcutta da aynı durumda (etkin, kaynak IP uzayı boş/dolu aynı) vardır. Böyle
+            olmayan (yeni, yeni etkinleşen ya da kaynak uzayı boş/dolu değişen) konumlar
+            için adayda o konumlarla sınırlı düz `reachability` ihlal bulmamalıdır.
+            `reachable` değişmezinde mevcutta etkin olup adayda kaybolan konum, o
+            konumdan erişimin kaybıdır ve ihlal sayılır. `blocked` değişmezinde kaybolan
+            konum ihlali genişletemez (oradan akış başlamaz).
+        (2) Ortak konumlarda değişmezin başlık uzayıyla sınırlı `differentialReachability`
+            mevcutta beklentiyi sağlayıp adayda bozan akış göstermez.
+        (3) Mevcut snapshot bu değişmezi gerçekten ihlal ediyor.
+        Bunlar, değişmezin başlık uzayında ve adaydaki tüm etkin başlangıç konumlarında
+        adayın ihlal kümesinin mevcudun ihlal kümesinin alt kümesi olduğunu gösterir
+        (ihlal genişlemedi; daralmış ya da aynı kalmış olabilir). Raporlardaki "bu
+        değişiklik ihlali genişletmiyor (kanıtlandı)" ifadesi tam olarak bu iddiadır ve
+        aşağıdaki Batfish davranışına dayanır. Genişleme varsa sonuç ihlaldir ve karşı
+        örnek adayda YENİ bozulan akıştır.
 
-        Garanti etmez: mevcuttaki ihlalin kabul edilebilir olduğunu (bu bir ürün
-        kararıdır, ihlal raporda görünür kalır); değişmezin başlık uzayı dışındaki
-        davranışı (o, yan etki kapısının işi, madde 3).
+        Dayandığı Batfish davranışı (belgelenmemiş, testle sabit): `differentialReachability`
+        yalnızca iki snapshot'ta da var ve etkin olan konumları tarar (bu yüzden (1)
+        gerekir) ve her konum için "adayda artan" ve "adayda azalan" kümelerden ayrı birer
+        örnek döndürür. Sonuç boşsa ortak konumlarda iki ihlal kümesi eşittir. Dolu
+        sonuçta yalnızca daralma örnekleri varsa, genişleme kümesi boş olmasaydı ondan da
+        örnek dönecekti; tests/test_preexisting_batfish.py'deki aynı anda genişleten ve
+        daraltan senaryo bunu, arayüz adresi değişen senaryo da kaynak uzayı değişen ortak
+        konumun taranmasını sabitler.
 
-        Kanıt yönü: `differentialReachability`, değişmezi bozan eylem kümesi için iki
-        snapshot arasında farklı davranan akışları arar ve her başlangıç noktası için
-        "adayda artan" ve "adayda azalan" kümelerden ayrı ayrı birer örnek döndürür.
-        Sonuç boşsa iki ihlal kümesi bu uzayda eşittir (kanıt). Dolu sonuçta yalnızca
-        örneklere bakılır: adayda bozan/mevcutta bozmayan bir örnek genişlemedir;
-        yalnızca daralma örnekleri varsa, Batfish genişleme kümesi boş olmasaydı ondan
-        da örnek döndürecekti (bunu tests/test_preexisting_batfish.py'deki aynı anda
-        genişleten ve daraltan senaryo sabitler). Sınıflandırılamayan her örnek (boş
-        iz, bilinmeyen disposition, iki tarafta da aynı durum) kapalı yönde genişleme
-        sayılır.
+        Kapalı yön: konum kümesi çözülemezse, sınıflandırılamayan örnek (boş iz, bilinmeyen
+        disposition, iki tarafta aynı durum) görülürse genişleme sayılır. Yeni konumda
+        bulunan her ihlal, mevcutta başka bir konumdan zaten mümkün olsa bile ret
+        sebebidir: bu yanlış ret üretebilir, yanlış kabul üretmez.
+
+        Garanti etmez: mevcuttaki ihlalin kabul edilebilir olduğunu (ürün kararı; ihlal
+        raporda görünür kalır); değişmezin başlık uzayı dışındaki davranışı (madde 3).
         """
-        widened = self._widening(bf, result.check)
+        check = result.check
+        try:
+            new_locations, lost = self._location_delta(bf, check)
+            widened = None
+            if lost and check.expect == "reachable":
+                widened = self._lost_message(lost)
+            if widened is None and new_locations:
+                example = self._violation(bf, check, "cand", start=", ".join(new_locations))
+                if example is not None:
+                    widened = f"{example} (yeni başlangıç konumunda ihlal)"
+        except _Unresolved as exc:
+            widened = (
+                f"başlangıç konumları karşılaştırılamadı ({exc}); "
+                "genişleme olmadığı kanıtlanamadı"
+            )
+        if widened is None:
+            widened = self._widening(bf, check)
         if widened is not None:
             result.counterexample = widened
             result.preexisting = False
             return
         # Genişleme yoksa mevcut da ihlal ediyor olmalı; değilse sonuçlar çelişiyordur
         # ve kapalı yönde (ihlal) karar verilir.
-        result.preexisting = self._violation(bf, result.check, "base") is not None
+        result.preexisting = self._violation(bf, check, "base") is not None
+
+    def _check_lost_locations(self, bf, result: CheckResult) -> None:
+        """Adayda kanıtlanmış `reachable` değişmezi: mevcutta etkin olan bir başlangıç
+        konumu adayda yoksa ya da etkin değilse, o konumdan erişim kaybolmuştur.
+
+        Adaydaki `reachability` yalnızca adayda var olan konumlara bakar; kaybolan konumu
+        görmez. Bu yüzden kayıp ayrıca ihlal sayılır (kapalı yön)."""
+        try:
+            _, lost = self._location_delta(bf, result.check)
+        except _Unresolved as exc:
+            result.passed = False
+            result.counterexample = (
+                f"başlangıç konumları karşılaştırılamadı ({exc}); erişimin korunduğu "
+                "kanıtlanamadı"
+            )
+            return
+        if lost:
+            result.passed = False
+            result.counterexample = self._lost_message(lost)
+
+    @staticmethod
+    def _lost_message(lost: list[str]) -> str:
+        return (
+            f"başlangıç konumu adayda yok ya da etkin değil: {', '.join(lost)}; "
+            "o konumdan erişim kayboldu"
+        )
+
+    @classmethod
+    def _location_delta(cls, bf, check: FlowCheck) -> tuple[list[str], list[str]]:
+        """(adayda ortak olmayan etkin konumların belirteçleri, kaybolan etkin konumlar).
+
+        Ortak konum: iki snapshot'ta da etkin ve kaynak IP uzayı ikisinde de boş ya da
+        ikisinde de dolu. Ortak olmayan her aday konumu ayrıca düz `reachability` ile
+        sınanır; bu, konumun değişip değişmediğini bilmekten daha sıkıdır (kapalı yön).
+        """
+        base = cls._location_states(bf, check.start, "base")
+        cand = cls._location_states(bf, check.start, "cand")
+        new_specs = [
+            spec
+            for loc, (spec, active, ips) in sorted(cand.items())
+            if active and base.get(loc, (None, False, None))[1:] != (True, ips)
+        ]
+        lost = [
+            loc
+            for loc, (_, active, _) in sorted(base.items())
+            if active and not cand.get(loc, (None, False, None))[1]
+        ]
+        return new_specs, lost
+
+    @staticmethod
+    def _location_states(bf, start: str, snapshot: str) -> dict[str, tuple[str, bool, bool]]:
+        """`start`'ın çözüldüğü konumlar.
+
+        {konum: (reachability belirteci, etkin mi, kaynak IP uzayı dolu mu)}"""
+        names = bf.q.resolveLocationSpecifier(locations=start).answer(snapshot=snapshot).frame()
+        expected = {str(loc) for loc in names["Location"]}
+        ips_df = (
+            bf.q.resolveIpsOfLocationSpecifier(locations=start)
+            .answer(snapshot=snapshot)
+            .frame()
+        )
+        has_ips: dict[str, bool] = {}
+        for _, row in ips_df.iterrows():
+            for loc in _location_list(row["Locations"]):
+                has_ips[loc] = str(row["IP_Space"]).strip().lower() != "empty"
+        if set(has_ips) != expected:
+            raise _Unresolved(f"{snapshot}: konum ve IP uzayı listeleri uyuşmuyor")
+
+        props = (
+            bf.q.interfaceProperties(properties="Active").answer(snapshot=snapshot).frame()
+        )
+        active: dict[tuple[str, str], bool] = {}
+        for _, row in props.iterrows():
+            flag = str(row["Active"])
+            if flag not in ("True", "False"):
+                raise _Unresolved(f"{snapshot}: arayüz etkinliği okunamadı ({flag})")
+            iface = row["Interface"]
+            active[(str(iface.hostname).lower(), str(iface.interface))] = flag == "True"
+
+        out: dict[str, tuple[str, bool, bool]] = {}
+        for loc in expected:
+            m = _LOCATION.match(loc)
+            if not m:
+                raise _Unresolved(f"{snapshot}: tanınmayan konum {loc}")
+            kind, node, iface = m.groups()
+            key = (node.lower(), iface)
+            if key not in active:
+                raise _Unresolved(f"{snapshot}: {node}[{iface}] arayüz listesinde yok")
+            spec = f'"{node}"["{iface}"]'
+            if kind == "InterfaceLinkLocation":
+                spec = f"@enter({spec})"
+            out[loc] = (spec, active[key], has_ips[loc])
+        return out
 
     @classmethod
     def _widening(cls, bf, check: FlowCheck) -> str | None:

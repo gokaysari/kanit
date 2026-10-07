@@ -208,3 +208,156 @@ def test_pr_check_accepts_narrow_rule_with_preexisting_violation(tmp_path):
     assert "Kanıt etki raporu: KABUL EDİLDİ" in md
     row = next(line for line in md.splitlines() if BROAD_SSH in line)
     assert PREEXISTING_TEXT in row
+
+
+# --- başlangıç konumu kümeleri farklı olduğunda ---------------------------------------
+# differentialReachability yalnızca iki snapshot'ta da var ve etkin olan konumları
+# tarar. Adayda yeni, yeniden etkinleşen ya da kaybolan konumlar ayrıca sınanmalı.
+
+A20 = " permit tcp 10.10.10.0 0.0.0.255 host 10.20.20.20 eq 22\n"
+OPEN_30_ANY = (A20, A20 + " permit tcp any host 10.20.20.30 eq 22\n")
+NO_SSH_DB = [
+    (" ip access-group SERVERS-OUT out\n",
+     " ip access-group SERVERS-OUT out\n ip access-group NO-SSH-DB in\n"),
+    (" ip address 10.0.0.2 255.255.255.252\n",
+     " ip address 10.0.0.2 255.255.255.252\n ip access-group NO-SSH-DB in\n"),
+    (" ip address 10.10.10.1 255.255.255.0\n",
+     " ip address 10.10.10.1 255.255.255.0\n ip access-group NO-SSH-DB in\n"),
+    ("ip route 0.0.0.0",
+     "ip access-list extended NO-SSH-DB\n deny tcp any host 10.20.20.30 eq 22\n"
+     " permit ip any any\n!\nip route 0.0.0.0"),
+]
+LAB_IF = "interface GigabitEthernet0/3\n ip address 10.30.30.1 255.255.255.0\n"
+BEFORE_GI2 = "interface GigabitEthernet0/2\n"
+BRANCH = ("!\nhostname branch\n!\ninterface GigabitEthernet0/0\n"
+          " ip address 10.20.40.1 255.255.255.0\n no shutdown\n!\nend\n")
+
+
+def inv(name, start, dst, expect, port, src=None):
+    return {"name": name, "start": start, "src": src, "dst": dst, "protocol": "TCP",
+            "dst_ports": port, "expect": expect}
+
+
+def pair(tmp_path, invariants, base_edits=(), cand_edits=(), cand_files=None):
+    """acme kopyasından mevcut ve aday snapshot; policy yalnızca verilen değişmezler."""
+    def edit(text, edits):
+        for old, new in edits:
+            assert text.count(old) == 1, old
+            text = text.replace(old, new)
+        return text
+
+    base, cand = tmp_path / "base", tmp_path / "cand"
+    shutil.copytree(ACME, base)
+    core = edit((base / "configs" / "core.cfg").read_text(), base_edits)
+    (base / "configs" / "core.cfg").write_text(core)
+    policy = json.dumps({"invariants": invariants}, ensure_ascii=False, indent=2)
+    (base / POLICY_FILE).write_text(policy)
+    shutil.copytree(base, cand)
+    (cand / "configs" / "core.cfg").write_text(edit(core, cand_edits))
+    for name, text in (cand_files or {}).items():
+        (cand / "configs" / name).write_text(text)
+    return base, cand
+
+
+def verify(base, cand):
+    from kanit.snapshot import read_invariants
+
+    verdict = BatfishVerifier(HOST).verify(base, cand, read_invariants(base), [])
+    for c in verdict.checks:
+        print(c.check.name, c.passed, c.preexisting, c.counterexample)
+    return verdict, {c.check.name: c for c in verdict.checks}
+
+
+SSH_FROM_CORE = inv("core'a giren hiçbir akış sunuculara SSH yapamaz", "@enter(core)",
+                    "10.20.20.0/24", "blocked", "22")
+
+
+def test_new_interface_opening_ssh_is_rejected(tmp_path):
+    """Denetçi n3: mevcutta her core arayüzünde NO-SSH-DB var; aday ACL'siz yeni Gi0/3
+    ekleyip .30:22'yi açıyor. Eski kodda differentialReachability 0 satır döndürüyor ve
+    öneri KABUL alıyordu."""
+    new_if = (BEFORE_GI2, LAB_IF + " no shutdown\n!\n" + BEFORE_GI2)
+    base, cand = pair(tmp_path, [SSH_FROM_CORE], NO_SSH_DB, [new_if, OPEN_30_ANY])
+    verdict, checks = verify(base, cand)
+    assert not verdict.accepted
+    c = checks[SSH_FROM_CORE["name"]]
+    assert not c.preexisting
+    assert "interface=GigabitEthernet0/3" in c.counterexample, c.counterexample
+    assert "yeni başlangıç konumunda ihlal" in c.counterexample
+
+    rc, md = check(base, cand, tmp_path / "r.md")
+    assert rc == 1 and "**ihlal**" in md and "GigabitEthernet0/3" in md
+
+
+def test_same_opening_without_new_interface_is_accepted(tmp_path):
+    """n3 kontrolü: aynı açılış, yeni arayüz olmadan; NO-SSH-DB her girişte .30:22'yi
+    kestiği için ihlal genişlemiyor."""
+    base, cand = pair(tmp_path, [SSH_FROM_CORE], NO_SSH_DB, [OPEN_30_ANY])
+    verdict, checks = verify(base, cand)
+    assert verdict.accepted
+    assert checks[SSH_FROM_CORE["name"]].preexisting
+
+
+def test_reactivated_interface_opening_ssh_is_rejected(tmp_path):
+    """Konum iki snapshot'ta da var ama mevcutta kapalı (shutdown): fark sorgusu onu
+    da taramaz."""
+    lab = (BEFORE_GI2, LAB_IF + " shutdown\n!\n" + BEFORE_GI2)
+    up = (LAB_IF + " shutdown\n", LAB_IF + " no shutdown\n")
+    base, cand = pair(tmp_path, [SSH_FROM_CORE], NO_SSH_DB + [lab], [up, OPEN_30_ANY])
+    verdict, checks = verify(base, cand)
+    assert not verdict.accepted
+    assert "interface=GigabitEthernet0/3" in checks[SSH_FROM_CORE["name"]].counterexample
+
+
+@pytest.mark.parametrize("start", ["/.*/", "@enter(/.*/[/.*/])"])
+def test_new_device_is_covered_for_multi_location_start(tmp_path, start):
+    """Denetçi n1: aday ACL'siz yeni bir cihaz (branch, 10.20.40.1/24) ekliyor. Eski kodda
+    fark sorgusu yalnızca daralma örnekleri döndürüyor ve öneri KABUL alıyordu."""
+    wide = inv("Kullanıcılardan 10.20/16'ya SSH yok", start, "10.20.0.0/16", "blocked", "22",
+               src="10.10.10.0/24")
+    base, cand = pair(tmp_path, [wide], cand_files={"branch.cfg": BRANCH})
+    verdict, checks = verify(base, cand)
+    assert not verdict.accepted
+    c = checks[wide["name"]]
+    assert not c.preexisting
+    assert "start=branch" in c.counterexample, c.counterexample
+
+    if start == "/.*/":
+        rc, md = check(base, cand, tmp_path / "r.md")
+        assert rc == 1 and "start=branch" in md
+
+
+def test_changed_source_space_on_common_location_is_covered(tmp_path):
+    """Ortak konumun arayüz adresi değişiyor (kaynak uzayı değişiyor) ve yeni ağ .30:22'ye
+    açılıyor. Konum iki tarafta da etkin olduğu için fark sorgusuna kalıyor; bu test
+    fark sorgusunun yeni kaynak uzayını da taradığını sabitler."""
+    ssh_users = inv("Kullanıcı arayüzünden sunuculara SSH yok", USERS, "10.20.20.0/24",
+                    "blocked", "22")
+    readdr = (" ip address 10.10.10.1 255.255.255.0\n", " ip address 10.10.11.1 255.255.255.0\n")
+    open_new = (LAST_RULE, " permit tcp 10.10.11.0 0.0.0.255 host 10.20.20.30 eq 22\n"
+                + LAST_RULE)
+    base, cand = pair(tmp_path, [ssh_users], cand_edits=[readdr, open_new])
+    verdict, checks = verify(base, cand)
+    assert not verdict.accepted
+    assert "10.10.11.2:49152->10.20.20.30:22" in checks[ssh_users["name"]].counterexample
+
+
+def test_reachable_invariant_losing_a_start_location_is_rejected(tmp_path):
+    """'reachable' değişmezinin bir başlangıç konumu adayda kapanıyor. Adaydaki
+    reachability yalnızca kalan konumlara bakar ve kanıtlar; kayıp ayrıca ihlaldir."""
+    start = "@enter(core[GigabitEthernet0/1]), @enter(core[GigabitEthernet0/3])"
+    https = inv("Kullanıcılar ve LAB web sunucusuna HTTPS ile erişir", start, "10.20.20.10",
+                "reachable", "443")
+    lab = (BEFORE_GI2, LAB_IF + " no shutdown\n!\n" + BEFORE_GI2)
+    allow_lab = (LAST_RULE, " permit tcp 10.30.30.0 0.0.0.255 host 10.20.20.10 eq 443\n"
+                 + LAST_RULE)
+    down = (LAB_IF + " no shutdown\n", LAB_IF + " shutdown\n")
+    base, cand = pair(tmp_path, [https], [lab, allow_lab], [down])
+    # Mevcut ağ değişmezi sağlıyor; yoksa test anlamsız olur.
+    unchanged, _ = verify(base, base)
+    assert unchanged.accepted
+    verdict, checks = verify(base, cand)
+    assert not verdict.accepted
+    c = checks[https["name"]]
+    assert not c.passed and "GigabitEthernet0/3" in c.counterexample
+    assert "erişim kayboldu" in c.counterexample

@@ -394,3 +394,36 @@ def test_reachable_invariant_widening_is_flow_that_stops_reaching():
     gained = [("f30", ["DENIED_OUT"], ["DELIVERED_TO_SUBNET"])]
     assert "f10" in BatfishVerifier._widening(fake_bf(lost), https)
     assert BatfishVerifier._widening(fake_bf(gained), https) is None
+
+
+def test_location_list_parses_batfish_text_and_fails_closed():
+    from kanit.verifier import _location_list, _Unresolved
+
+    a = "InterfaceLinkLocation{nodeName=core, interfaceName=GigabitEthernet0/1}"
+    b = "InterfaceLocation{nodeName=edge, interfaceName=Gi0/0.10}"
+    assert _location_list(f"[{a}, {b}]") == [a, b]
+    assert _location_list([a]) == [a]
+    with pytest.raises(_Unresolved):
+        _location_list(f"[{a}, BilinmeyenKonum{{x=y}}]")
+
+
+@pytest.mark.parametrize(
+    "base, cand, new, lost",
+    [
+        ({"L1": ("s1", True, True)}, {"L1": ("s1", True, True)}, [], []),  # ortak
+        ({}, {"L1": ("s1", True, True)}, ["s1"], []),  # yeni konum
+        ({"L1": ("s1", False, True)}, {"L1": ("s1", True, True)}, ["s1"], []),  # etkinleşti
+        ({"L1": ("s1", True, False)}, {"L1": ("s1", True, True)}, ["s1"], []),  # kaynak uzayı
+        ({"L1": ("s1", True, True)}, {}, [], ["L1"]),  # kayboldu
+        ({"L1": ("s1", True, True)}, {"L1": ("s1", False, True)}, [], ["L1"]),  # kapandı
+        ({}, {"L1": ("s1", False, True)}, [], []),  # adayda kapalı yeni konum: akış yok
+    ],
+)
+def test_location_delta(monkeypatch, base, cand, new, lost):
+    from kanit.verifier import BatfishVerifier
+
+    states = {"base": base, "cand": cand}
+    monkeypatch.setattr(
+        BatfishVerifier, "_location_states", staticmethod(lambda bf, start, snap: states[snap])
+    )
+    assert BatfishVerifier._location_delta(None, SSH_ALL) == (new, lost)
