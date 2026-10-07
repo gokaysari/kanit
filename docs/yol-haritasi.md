@@ -12,6 +12,7 @@ Sıra önceliktir. Her maddede "bitti" ölçütü yazılı; ölçüt sağlanmada
 - Token kullanımını ve tur sayısını rapora ve çıktıya yaz (maliyet görünür olsun).
 - API hatalarını ele al: anahtar yok, oran sınırı, aracın çağrılmaması, şemaya uymayan girdi.
 - Bitti: örnek istek gerçek Claude ile kabul ediliyor; hata durumları anlaşılır mesajla bitiyor.
+- Durum (Ekim 2026): kod tarafı yapıldı (auto + strict araç seçimi, API hata mesajları, tur başına token raporu, `make live-test`). Gerçek API'ye karşı canlı koşu yapılmadı (anahtar bekleniyor); madde açık.
 
 ## 2. Niyet kontrollerini değişiklikten bağımsız üret
 

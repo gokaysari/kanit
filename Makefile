@@ -32,5 +32,5 @@ plan: batfish     ## Claude ile (ANTHROPIC_API_KEY gerekir). Örn: make plan INT
 site:             ## Tanıtım sitesini yerelde aç (http://localhost:3000)
 	cd site && npm install && npm run dev
 
-site-build:       ## Statik çıktı: site/out/
+site-build:       ## Üretim derlemesi (vinext): site/dist/
 	cd site && npm ci && npm run build

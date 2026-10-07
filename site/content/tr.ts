@@ -107,7 +107,7 @@ export const tr: Dictionary = {
   },
   closing: {
     title: "Kendi ağınızda deneyin",
-    body: "Yapılandırmalarınız sizde kalır: doğrulama kendi makinenizde çalışan Batfish üzerinde yapılır. İlk pilot kurumları arıyoruz.",
+    body: "Doğrulama kendi makinenizde çalışan Batfish üzerinde yapılır; araç hiçbir cihaza bağlanmaz. Değişikliği Claude'a yazdırırsanız yapılandırmalarınız Anthropic API'sine gönderilir. İlk pilot kurumları arıyoruz.",
     cta: "Pilot için yazın",
   },
   footer: { builtOn: "Açık kaynak", and: "ve Claude üzerine kuruludur.", source: "Kaynak kod" },

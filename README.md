@@ -70,13 +70,13 @@ Bir akış kontrolü, bir akış kümesinin tamamının ulaşmasını (`reachabl
 
 ## Site
 
-`site/` altında Next.js (App Router, TypeScript) ile yazılmış tanıtım sitesi; Türkçe `/`, İngilizce `/en/`.
+`site/` altında Next.js App Router ve TypeScript ile yazılmış, vinext (Vite) ile derlenen tanıtım sitesi; Türkçe `/`, İngilizce `/en/`.
 
 ```bash
 make site         # http://localhost:3000
-make site-build   # statik çıktı: site/out/
+make site-build   # üretim derlemesi: site/dist/
 ```
 
 - Metinler `site/content/tr.ts` ve `site/content/en.ts` içinde.
-- Ad, alan adı, e-posta ve repo adresi yalnızca `site/site.config.ts` içinde. Alan adı ve e-posta hâlâ yer tutucu.
-- Çıktı tamamen statiktir; Vercel, Netlify, Cloudflare Pages ya da herhangi bir statik sunucuya konabilir.
+- Ad, alan adı, e-posta ve repo adresi yalnızca `site/site.config.ts` içinde (alan adı: netlemma.com).
+- Yayın Sites (Cloudflare Workers) üzerinden; yapılandırma `site/vite.config.ts` ve `site/.openai/hosting.json`.
