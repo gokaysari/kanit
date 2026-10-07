@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from . import loop, report
+from . import review
 from .proposer import ClaudeProposer, ScriptedProposer
 from .snapshot import CONFIG_DIR, read_configs, read_invariants
 from .verifier import BatfishVerifier
@@ -35,7 +36,10 @@ def main(argv: list[str] | None = None) -> int:
     plan.add_argument(
         "--apply", action="store_true", help="Kabul edilen değişikliği snapshot'a yaz"
     )
+    review.add_subparser(sub)
     args = p.parse_args(argv)
+    if args.cmd == "check":
+        return review.main(args)
 
     if args.scripted:
         proposer = ScriptedProposer(args.scripted)
