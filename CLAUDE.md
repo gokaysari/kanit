@@ -60,6 +60,7 @@ Ana oturum orkestratördür: işi ilgili ajana verir, kendisi yapmaz (Gökay aks
 | İş | `is-analisti` | yalnızca `docs/is/` | başvuru, pazar, riskler |
 | Denetim | `denetci` | hiçbir dosya (salt okunur) | her iş birleşmeden önce |
 | Uçtan uca test | `uctan-uca-testci` | hiçbir dosya (salt okunur) | büyük birleştirmeden ve yayından önce; eksikleri sahip ajanlarla raporlar |
+| Video ile canlı demo testi | `video-kayitci` | hiçbir dosya (çıktılar `/private/tmp/netlemma-video/`) | uçtan uca test senaryolarını tarayıcıda oynatıp kaydeder; kısa demo için aday video üretir |
 
 Teslim akışı (her iş için):
 
