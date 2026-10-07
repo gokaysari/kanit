@@ -42,9 +42,9 @@ Rapor `kanit-rapor.md` dosyasına yazılır. Çıkış kodları `kanit plan` ve 
 |---|---|
 | 0 | Kabul: son öneri doğrulamadan geçti. |
 | 1 | Ret: hiçbir öneri doğrulamadan geçmedi (kayıtlı öneriler bittiğinde de son turun reddi geçerlidir). |
-| 2 | Doğrulama çalışmadı: Batfish'e ulaşılamadı, snapshot ya da kayıtlı öneri okunamadı, API anahtarı yok ya da API hatası. Tek satırlık bir mesaj ne yapılacağını söyler; rapor (yazılabildiyse) "DOĞRULAMA ÇALIŞMADI" der. Bu bir ret değildir. |
+| 2 | Doğrulama çalışmadı ya da sonuç teslim edilemedi: Batfish'e ulaşılamadı, snapshot ya da kayıtlı öneri okunamadı, geçersiz argüman, API anahtarı yok, API hatası, beklenmeyen hata ya da rapor/snapshot yazılamadı. Tek satırlık bir mesaj ne yapılacağını söyler; karar verildiyse onu da söyler ("kabul edildi ama rapor yazılamadı"). Rapor (yazılabildiyse) "DOĞRULAMA ÇALIŞMADI" der. Bu bir ret değildir. Ayrıntılı hata için `KANIT_DEBUG=1`. |
 
-Batfish'e önce kısa bir bağlantı ön kontrolü yapılır (5 sn); ulaşılamazsa uzun beklemeden 2 ile durur. `make plan` API anahtarı yoksa Batfish'i başlatmadan durur. Docker Compose proje adı `kanit` olarak sabittir; repo hangi klasörde olursa olsun aynı Batfish kapsayıcısı kullanılır.
+Batfish'e önce kısa bir bağlantı ön kontrolü yapılır (varsayılan 5 sn, `KANIT_BATFISH_TIMEOUT` ile 600 sn'ye kadar); ulaşılamazsa uzun beklemeden 2 ile durur. `--batfish-host` ana makine adı ya da IPv4 olmalı (port 9996 sabit). `--apply` ya hep ya hiç yazar: bir dosya yazılamazsa snapshot olduğu gibi kalır. `make plan` API anahtarı yoksa Batfish'i başlatmadan durur. Docker Compose proje adı `kanit` olarak sabittir; repo hangi klasörde olursa olsun aynı Batfish kapsayıcısı kullanılır.
 
 Doğrudan komut: `kanit plan "<istek>" --snapshot <klasör>`; `--apply` kabul edilen değişikliği snapshot'a yazar, model `--model` ya da `KANIT_MODEL` ile seçilir.
 

@@ -3,9 +3,13 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import json
+import math
 import os
+import shutil
 import socket
 import sys
+import tempfile
+import traceback
 from pathlib import Path
 
 from . import loop, report
@@ -20,6 +24,7 @@ from .verifier import BatfishVerifier
 # KANIT_BATFISH_TIMEOUT ile değiştirilebilir (ör. testlerde 0.5).
 BATFISH_PORT = 9996
 BATFISH_CONNECT_TIMEOUT = 5.0
+BATFISH_CONNECT_TIMEOUT_MAX = 600.0
 
 
 class _NotRun(Exception):
@@ -84,10 +89,17 @@ def _scripted(paths: list[Path]) -> ScriptedProposer:
 def _check_batfish_host(host: str) -> None:
     """pybatfish yalnızca ana makine adı ya da IP alır; port ve şema sabittir."""
     try:
-        ipaddress.ip_address(host)
-        return
+        addr = ipaddress.ip_address(host)
     except ValueError:
-        pass
+        addr = None
+    if isinstance(addr, ipaddress.IPv6Address) or host.startswith("["):
+        # pybatfish URL'yi f"{host}:{port}" diye kurar; '::1' InvalidURL verir.
+        raise _NotRun(
+            f"--batfish-host geçersiz ({host!r}): IPv6 adresi desteklenmiyor; "
+            "ana makine adı ya da IPv4 ver. Örn. --batfish-host localhost"
+        )
+    if addr is not None:
+        return
     if not host or any(ch in host for ch in ":/@ "):
         raise _NotRun(
             f"--batfish-host geçersiz ({host!r}): yalnızca ana makine adı ya da IP olmalı "
@@ -102,10 +114,12 @@ def _connect_timeout() -> float:
     try:
         value = float(raw)
     except ValueError:
-        value = 0.0
-    if value <= 0:
+        value = math.nan
+    if not (math.isfinite(value) and 0 < value <= BATFISH_CONNECT_TIMEOUT_MAX):
         raise _NotRun(
-            f"KANIT_BATFISH_TIMEOUT geçersiz ({raw!r}): saniye cinsinden pozitif bir sayı ver."
+            f"KANIT_BATFISH_TIMEOUT geçersiz ({raw!r}): 0'dan büyük, en çok "
+            f"{BATFISH_CONNECT_TIMEOUT_MAX:g} saniyelik bir sayı ver (varsayılan "
+            f"{BATFISH_CONNECT_TIMEOUT:g})."
         )
     return value
 
@@ -134,6 +148,25 @@ def _positive_int(text: str) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Güvenlik ağı: beklenmeyen her istisna tek satır mesaj ve 2 olur (ret değil).
+
+    argparse'ın kendi çıkışları (SystemExit) ve KeyboardInterrupt Exception değildir,
+    olduğu gibi geçer. KANIT_DEBUG=1 ise traceback da yazılır.
+    """
+    try:
+        return _main(argv)
+    except Exception as exc:  # noqa: BLE001 - çıkış kodu sözleşmesi: çalışmadı = 2
+        if os.environ.get("KANIT_DEBUG") == "1":
+            traceback.print_exc()
+        print(
+            f"Beklenmeyen hata: {type(exc).__name__}: {_one_line(exc)}; hata raporu için "
+            "KANIT_DEBUG=1 ile çalıştır.",
+            file=sys.stderr,
+        )
+        return 2
+
+
+def _main(argv: list[str] | None) -> int:
     p = argparse.ArgumentParser(
         prog="kanit", description="Ağ değişikliğini Claude yazar, Batfish doğrular."
     )
@@ -183,7 +216,7 @@ def main(argv: list[str] | None = None) -> int:
     except OSError as exc:
         print(
             f"Değişiklik {decision} ama rapor yazılamadı ({args.out}: {_os_reason(exc)}). "
-            "--out ile yazılabilir bir yol verip yeniden çalıştır.",
+            "Snapshot'a dokunulmadı; --out ile yazılabilir bir yol ver.",
             file=sys.stderr,
         )
         return 2
@@ -200,25 +233,105 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if result.accepted and args.apply:
-        written = []
-        for name, text in result.final.candidate_configs.items():
-            target = args.snapshot / CONFIG_DIR / name
-            if target.is_file() and target.read_text() == text:
-                continue
-            try:
-                target.write_text(text)
-            except OSError as exc:
-                done = ", ".join(written) or "hiçbiri"
-                print(
-                    f"Değişiklik kabul edildi ama snapshot'a yazılamadı ({target}: "
-                    f"{_os_reason(exc)}; yazılan dosyalar: {done}). Yazma iznini düzeltip "
-                    f"yeniden çalıştır ya da farkı {args.out} raporundan elle uygula.",
-                    file=sys.stderr,
-                )
-                return 2
-            written.append(name)
-        print("Değişiklik snapshot'a yazıldı.")
+        try:
+            changed = _apply_atomic(args.snapshot / CONFIG_DIR, result.final.candidate_configs)
+        except _ApplyFailed as exc:
+            print(f"Değişiklik kabul edildi ama {exc} Fark raporda: {args.out}", file=sys.stderr)
+            return 2
+        names = ", ".join(changed) or "değişen dosya yok"
+        print(f"Değişiklik snapshot'a yazıldı ({names}).")
     return 0 if result.accepted else 1
+
+
+class _ApplyFailed(Exception):
+    """--apply teslim edilemedi; mesaj snapshot'ın son durumunu açıkça söyler."""
+
+
+def _write_atomic(target: Path, data: bytes) -> None:
+    """Aynı dizinde geçici dosyaya yazar ve os.replace ile değiştirir (izinler korunur)."""
+    fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=f".{target.name}.", suffix=".kanit")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        if target.exists():
+            shutil.copymode(target, tmp)
+        os.replace(tmp, target)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def _apply_atomic(cfg_dir: Path, configs: dict[str, str]) -> list[str]:
+    """Kabul edilen yapılandırmaları ya hep ya hiç yazar; değişen dosya adlarını döndürür.
+
+    Önce her hedef okunur ve yazılabilirliği sınanır (salt okunur dosya yazılmaz).
+    Sonra dosyalar tek tek değiştirilir; biri başarısız olursa önceki değişiklikler
+    özgün baytlarıyla geri yüklenir. Geri yükleme de başarısız olursa özgün içerikler
+    bir yedek klasörüne yazılır ve mesaj snapshot'ın tutarsız olduğunu söyler.
+    """
+    originals: dict[str, bytes | None] = {}
+    pending: dict[str, bytes] = {}
+    try:
+        for name, text in configs.items():
+            target = cfg_dir / name
+            old = target.read_bytes() if target.exists() else None
+            new = text.encode("utf-8")
+            if old == new:
+                continue
+            if old is not None and not os.access(target, os.W_OK):
+                raise PermissionError(13, "erişim izni yok", str(target))
+            originals[name], pending[name] = old, new
+        if pending and not os.access(cfg_dir, os.W_OK):
+            raise PermissionError(13, "erişim izni yok", str(cfg_dir))
+    except OSError as exc:
+        where = exc.filename or cfg_dir
+        raise _ApplyFailed(
+            f"snapshot'a yazılamadı ({where}: {_os_reason(exc)}); hiçbir dosya "
+            "değişmedi, snapshot olduğu gibi."
+        ) from None
+
+    done: list[str] = []
+    for name, data in pending.items():
+        try:
+            _write_atomic(cfg_dir / name, data)
+        except OSError as exc:
+            failure = f"{cfg_dir / name}: {_os_reason(exc)}"
+            break
+        done.append(name)
+    else:
+        return done
+
+    not_restored = []
+    for name in reversed(done):
+        try:
+            if originals[name] is None:
+                (cfg_dir / name).unlink()
+            else:
+                _write_atomic(cfg_dir / name, originals[name])
+        except OSError:
+            not_restored.append(name)
+    if not not_restored:
+        raise _ApplyFailed(
+            f"snapshot'a yazılamadı ({failure}); yazılan {len(done)} dosya özgün "
+            "içeriğine geri yüklendi, snapshot olduğu gibi."
+        )
+    try:
+        backup = Path(tempfile.mkdtemp(prefix="kanit-yedek-"))
+        for name in not_restored:
+            if originals[name] is not None:
+                (backup / name).write_bytes(originals[name])
+        where = f"özgün içerikleri {backup} yedeğinden geri al"
+    except OSError as exc:
+        where = (
+            f"yedek de yazılamadı ({_os_reason(exc)}); özgün içerikleri sürüm "
+            "denetiminden geri al"
+        )
+    raise _ApplyFailed(
+        f"snapshot'a yazılamadı ({failure}) ve geri yükleme başarısız: snapshot TUTARSIZ; "
+        f"şu dosyalar değişti: {', '.join(sorted(not_restored))}; {where}."
+    )
 
 
 def _plan(args: argparse.Namespace) -> loop.Result | None:
