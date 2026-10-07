@@ -59,6 +59,7 @@ Ana oturum orkestratördür: işi ilgili ajana verir, kendisi yapmaz (Gökay aks
 | Ürün | `urun-uzmani` | yalnızca `docs/urun/` | kabul kriterleri, pilot, demo senaryosu |
 | İş | `is-analisti` | yalnızca `docs/is/` | başvuru, pazar, riskler |
 | Denetim | `denetci` | hiçbir dosya (salt okunur) | her iş birleşmeden önce |
+| Uçtan uca test | `uctan-uca-testci` | hiçbir dosya (salt okunur) | büyük birleştirmeden ve yayından önce; eksikleri sahip ajanlarla raporlar |
 
 Teslim akışı (her iş için):
 
