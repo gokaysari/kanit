@@ -106,16 +106,38 @@ def test_missing_scripted_file_exits_2_with_hint(tmp_path):
 
 def test_unreachable_batfish_exits_2_quickly_and_writes_report(tmp_path):
     # Gerçek CLI, ayrı süreç. 127.0.0.2: macOS'ta zaman aşımı, Linux'ta bağlantı reddi;
-    # ikisi de kısa ön kontrolle 2 vermeli (pybatfish'in kendi beklemesi dakikalar sürer).
+    # ikisi de kısa ön kontrolle 2 vermeli. Süre sınırı yalnızca pybatfish'in kendi
+    # dakikalarca süren beklemesini yakalar; alt süreç ve içe aktarma maliyeti ortama
+    # göre değiştiği için kısa zaman aşımının kullanıldığını burada değil,
+    # test_preflight_uses_configured_timeout sınar.
     out = tmp_path / "r.md"
     started = time.monotonic()
     p = kanit("--snapshot", str(ACME), "--scripted", str(GOOD), "--out", str(out),
               KANIT_BATFISH_TIMEOUT="0.5")
-    # Varsayılan ön kontrol 5 sn; 3 sn sınırı KANIT_BATFISH_TIMEOUT'un okunduğunu gösterir
-    # (macOS'ta 127.0.0.2 zaman aşımına düşer).
-    assert time.monotonic() - started < 3
+    assert time.monotonic() - started < 20
     assert p.returncode == 2
     assert_not_run(p.stderr, p.stdout, out, "Batfish'e ulaşılamadı", "127.0.0.2", "make batfish")
+
+
+@pytest.mark.parametrize(("raw", "expected"), [(None, 5.0), ("0.5", 0.5), ("4", 4.0)])
+def test_preflight_uses_configured_timeout(monkeypatch, raw, expected):
+    # Ağdan ve saatten bağımsız: ön kontrolün socket'e verdiği zaman aşımını yakalar,
+    # zaman aşımını zorlar ve mesajın aynı süreyi söylediğini doğrular.
+    if raw is None:
+        monkeypatch.delenv("KANIT_BATFISH_TIMEOUT", raising=False)
+    else:
+        monkeypatch.setenv("KANIT_BATFISH_TIMEOUT", raw)
+    seen = []
+
+    def fake_create_connection(address, timeout=None):
+        seen.append((address, timeout))
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(cli.socket, "create_connection", fake_create_connection)
+    with pytest.raises(cli._NotRun) as info:
+        cli._check_batfish("127.0.0.2")
+    assert seen == [(("127.0.0.2", cli.BATFISH_PORT), expected)]
+    assert f"zaman aşımı, {expected:g} sn" in str(info.value)
 
 
 def test_connect_timeout_reads_env(monkeypatch):

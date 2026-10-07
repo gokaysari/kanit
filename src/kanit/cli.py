@@ -127,11 +127,15 @@ def _connect_timeout() -> float:
 def _check_batfish(host: str) -> None:
     """Batfish'e kısa süreli TCP ön kontrolü; ulaşılamazsa uzun bekleme yerine hemen durur."""
     _check_batfish_host(host)
+    timeout = _connect_timeout()
     try:
-        socket.create_connection((host, BATFISH_PORT), timeout=_connect_timeout()).close()
+        socket.create_connection((host, BATFISH_PORT), timeout=timeout).close()
     except OSError as exc:
+        reason = _os_reason(exc)
+        if isinstance(exc, TimeoutError):
+            reason = f"{reason}, {timeout:g} sn"
         raise _NotRun(
-            f"Batfish'e ulaşılamadı ({host}:{BATFISH_PORT}, {_os_reason(exc)}). "
+            f"Batfish'e ulaşılamadı ({host}:{BATFISH_PORT}, {reason}). "
             "Batfish'i başlat (make batfish) ya da --batfish-host / BATFISH_HOST ile "
             "doğru adresi ver."
         ) from None
