@@ -5,9 +5,12 @@
   align-items: start;
 }
 
+.figure { margin: 0; }
+
 .frame {
   display: block;
   width: 100%;
+  height: auto;
   aspect-ratio: 16 / 9;
   background: #111411;
 }
@@ -53,6 +56,19 @@
 }
 
 .text a { color: var(--acid); }
+
+.text .note {
+  font: 400 13px/1.6 var(--mono);
+  color: var(--dark-muted);
+}
+
+.fallback {
+  margin-top: 12px;
+  color: var(--cream);
+  font-size: 15px;
+}
+
+.fallback a { color: var(--acid); }
 
 @media (max-width: 860px) {
   .slot {
