@@ -43,13 +43,23 @@ def run(
     verifier: Verifier,
     max_rounds: int = 3,
 ) -> Result:
-    """Öner -> doğrula -> karşı örnekle düzelt. Yalnızca doğrulanan öneri kabul edilir."""
+    """Öner -> doğrula -> karşı örnekle düzelt. Yalnızca doğrulanan öneri kabul edilir.
+
+    Mevcut ve aday Batfish'e aynı yoldan (`write_candidate`, yalnızca `configs/`) gider;
+    böylece iki taraf aynı türde dosya kümesiyle karşılaştırılır.
+
+    Hata yönü: desteklenmeyen snapshot düzeni (`UnsupportedLayout`) ve doğrulayıcının
+    istisnası (Batfish'e ulaşılamadı, beklenmeyen cevap) yutulmaz, çağırana yükselir;
+    `kanit plan` bunları tek satırlık "doğrulama çalışmadı" mesajına ve çıkış 2'ye
+    çevirir. Kontrolün kendisinin başarısız olması (ör. niyetin başlangıç konumu adayda
+    çözülmüyor) istisna değil, rettir; geri bildirim modele gider ve döngü sürer."""
     base_configs = read_configs(snapshot)
     invariants = read_invariants(snapshot)
     result = Result(intent, base_configs, model=getattr(proposer, "model", None))
     feedback: str | None = None
 
     with tempfile.TemporaryDirectory(prefix="kanit-") as tmp:
+        base_dir = write_candidate(base_configs, Path(tmp) / "base")
         for i in range(max_rounds):
             before = proposer.usage.copy()
             try:
@@ -71,7 +81,7 @@ def run(
 
             cand_dir = write_candidate(candidate, Path(tmp) / f"round-{i + 1}")
             verdict = verifier.verify(
-                snapshot, cand_dir, invariants, list(proposal.intent_checks)
+                base_dir, cand_dir, invariants, list(proposal.intent_checks)
             )
             result.rounds.append(Round(proposal, verdict, candidate, spent))
             if verdict.accepted:

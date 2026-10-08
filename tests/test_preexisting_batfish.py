@@ -329,8 +329,10 @@ def test_new_device_is_covered_for_multi_location_start(tmp_path, start):
 
 def test_changed_source_space_on_common_location_is_covered(tmp_path):
     """Ortak konumun arayüz adresi değişiyor (kaynak uzayı değişiyor) ve yeni ağ .30:22'ye
-    açılıyor. Konum iki tarafta da etkin olduğu için fark sorgusuna kalıyor; bu test
-    fark sorgusunun yeni kaynak uzayını da taradığını sabitler."""
+    açılıyor. Konum iki tarafta da etkin olduğu için fark sorgusuna kalıyor. Değişmez
+    src'siz ve blocked olduğu için her kaynakla (0.0.0.0/0) sınanır; bu test genişlemenin
+    yeni adres bloğundan gelen akışla bulunduğunu sabitler (örnek kaynak adresini Batfish
+    seçer, yalnızca blok sınanır)."""
     ssh_users = inv("Kullanıcı arayüzünden sunuculara SSH yok", USERS, "10.20.20.0/24",
                     "blocked", "22")
     readdr = (" ip address 10.10.10.1 255.255.255.0\n", " ip address 10.10.11.1 255.255.255.0\n")
@@ -339,7 +341,10 @@ def test_changed_source_space_on_common_location_is_covered(tmp_path):
     base, cand = pair(tmp_path, [ssh_users], cand_edits=[readdr, open_new])
     verdict, checks = verify(base, cand)
     assert not verdict.accepted
-    assert "10.10.11.2:49152->10.20.20.30:22" in checks[ssh_users["name"]].counterexample
+    c = checks[ssh_users["name"]]
+    assert not c.preexisting
+    assert "[10.10.11." in c.counterexample and "->10.20.20.30:22" in c.counterexample
+    assert "(yeni ihlal)" in c.counterexample
 
 
 def test_reachable_invariant_losing_a_start_location_is_rejected(tmp_path):
