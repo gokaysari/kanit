@@ -6,13 +6,7 @@ from pathlib import Path
 
 from .models import Proposal, ProposalError, Usage, Verdict
 from .proposer import Proposer, ProposerError
-from .snapshot import (
-    UnsupportedLayout,
-    apply_edits,
-    read_configs,
-    read_invariants,
-    write_candidate,
-)
+from .snapshot import apply_edits, read_configs, read_invariants, write_candidate
 from .verifier import Verifier
 
 
@@ -52,18 +46,16 @@ def run(
     """Öner -> doğrula -> karşı örnekle düzelt. Yalnızca doğrulanan öneri kabul edilir.
 
     Mevcut ve aday Batfish'e aynı yoldan (`write_candidate`, yalnızca `configs/`) gider;
-    böylece iki taraf aynı türde dosya kümesiyle karşılaştırılır. Doğrulayıcının
-    istisnası (Batfish'e ulaşılamadı, beklenmeyen cevap) döngüyü durdurur ve
-    `result.error` olur: doğrulama çalışmadı, kabul edilmez (çıkış 2). Kontrolün
-    kendisinin başarısız olması (ör. niyetin başlangıç konumu adayda çözülmüyor) istisna
-    değil, rettir; geri bildirim modele gider ve döngü sürer."""
-    model = getattr(proposer, "model", None)
-    try:
-        base_configs = read_configs(snapshot)
-    except UnsupportedLayout as exc:
-        return Result(intent, {}, model=model, error=f"Snapshot desteklenmeyen düzende: {exc}")
+    böylece iki taraf aynı türde dosya kümesiyle karşılaştırılır.
+
+    Hata yönü: desteklenmeyen snapshot düzeni (`UnsupportedLayout`) ve doğrulayıcının
+    istisnası (Batfish'e ulaşılamadı, beklenmeyen cevap) yutulmaz, çağırana yükselir;
+    `kanit plan` bunları tek satırlık "doğrulama çalışmadı" mesajına ve çıkış 2'ye
+    çevirir. Kontrolün kendisinin başarısız olması (ör. niyetin başlangıç konumu adayda
+    çözülmüyor) istisna değil, rettir; geri bildirim modele gider ve döngü sürer."""
+    base_configs = read_configs(snapshot)
     invariants = read_invariants(snapshot)
-    result = Result(intent, base_configs, model=model)
+    result = Result(intent, base_configs, model=getattr(proposer, "model", None))
     feedback: str | None = None
 
     with tempfile.TemporaryDirectory(prefix="kanit-") as tmp:
@@ -88,13 +80,9 @@ def run(
                 continue
 
             cand_dir = write_candidate(candidate, Path(tmp) / f"round-{i + 1}")
-            try:
-                verdict = verifier.verify(
-                    base_dir, cand_dir, invariants, list(proposal.intent_checks)
-                )
-            except Exception as exc:  # noqa: BLE001 - result.error olarak raporlanır
-                result.error = f"Batfish doğrulaması çalışmadı: {type(exc).__name__}: {exc}"
-                break
+            verdict = verifier.verify(
+                base_dir, cand_dir, invariants, list(proposal.intent_checks)
+            )
             result.rounds.append(Round(proposal, verdict, candidate, spent))
             if verdict.accepted:
                 break

@@ -14,23 +14,66 @@ class UnsupportedLayout(ValueError):
     """Snapshot, Batfish'e giden dosya kümesini birebir bilemeyeceğimiz bir düzende."""
 
 
-def read_configs(snapshot: Path) -> dict[str, str]:
-    """`configs/` altında Batfish'in yükleyeceği dosyaların hepsi: {dosya adı: metin}.
+# Snapshot kökünde Batfish'in YÜKLEMEDİĞİ, kanit'in de izin verdiği girişler. Gerisi
+# (hosts/, iptables/, batfish/ içindeki runtime_data.json ya da layer1_topology.json,
+# aws_configs/, azure_configs/, sonic_configs/, checkpoint_management/, kökteki
+# external_bgp_announcements.json, *_blacklist ... ve tanınmayan her şey) modeli
+# değiştirebilir ama kanit Batfish'e yalnızca configs/ gönderir; bu yüzden desteklenmez.
+ROOT_ALLOWED = frozenset({CONFIG_DIR, POLICY_FILE, "scripted"})
+ROOT_HARMLESS_PREFIXES = ("readme", "license", "licence", "changelog")
+ROOT_HARMLESS_SUFFIXES = (".md", ".rst")
 
-    Garanti: dönen anahtar kümesi, Batfish'in aynı `configs/` klasöründen yüklediği dosya
-    kümesine birebir eşittir. Bu yüzden `kanit check`'in "değişti mi" kararı, rapordaki
-    fark ve Batfish'e giden dosyalar aynı kümedir; okunmayan bir dosya modeli sessizce
-    değiştiremez.
+
+def _root_entry_allowed(entry: Path) -> bool:
+    name = entry.name
+    if name.startswith(".") or name in ROOT_ALLOWED:
+        return True
+    lower = name.lower()
+    return not entry.is_dir() and (
+        lower.startswith(ROOT_HARMLESS_PREFIXES) or lower.endswith(ROOT_HARMLESS_SUFFIXES)
+    )
+
+
+def check_layout(snapshot: Path) -> None:
+    """Snapshot kökünde yalnızca kanit'in Batfish'e götürdüğü (configs/) ya da Batfish'in
+    yüklemediği bilinen girişler olmalı; değilse `UnsupportedLayout`.
+
+    İzinli: `configs/`, `policy.json`, `scripted/` (kanit'in kayıtlı önerileri), adı nokta
+    ile başlayan girişler (Batfish gizli girişleri atlar; .git gibi), README*/LICENSE*/
+    CHANGELOG* ve .md/.rst dosyaları. Bunları Batfish'in yüklemediği
+    tests/test_snapshot_batfish.py ile sabittir. Bilinmeyen her giriş kapalı yönde
+    desteklenmez sayılır (yanlış "çalışmadı" üretebilir, yanlış kabul üretmez)."""
+    extra = [p.name for p in sorted(snapshot.iterdir()) if not _root_entry_allowed(p)]
+    if extra:
+        raise UnsupportedLayout(
+            f"{snapshot}: snapshot kökünde desteklenmeyen giriş: {', '.join(extra)}. kanit "
+            f"Batfish'e yalnızca '{CONFIG_DIR}/' ve '{POLICY_FILE}' götürür; Batfish'in "
+            "yükleyebileceği başka girişler (hosts/, batfish/, iptables/ ...) modeli "
+            "değiştirebilir ve doğrulanamaz"
+        )
+
+
+def read_configs(snapshot: Path) -> dict[str, str]:
+    """Snapshot'ta Batfish'in yükleyeceği yapılandırma dosyalarının hepsi: {ad: metin}.
+
+    Garanti (kapsam: snapshot kökü ve `configs/`): okuma başarılıysa, Batfish'in bu
+    snapshot klasöründen yükleyeceği dosya kümesi tam olarak `configs/<anahtar>`
+    dosyalarıdır. İki parçası var: (1) kökte `check_layout`'un izin verdiği girişlerden
+    başkası yoktur ve izinli girişlerin hiçbirini Batfish yüklemez (policy.json dahil);
+    (2) `configs/` altında Batfish'in yükleyeceği her dosya okunur. Bu yüzden
+    `kanit check`'in "değişti mi" kararı, rapordaki fark ve Batfish'e giden dosyalar aynı
+    kümedir; okunmayan bir dosya modeli sessizce değiştiremez.
 
     Dayandığı Batfish davranışı (belgelenmemiş, tests/test_snapshot_batfish.py ile sabit):
     Batfish `configs/` altındaki her dosyayı uzantısına bakmadan yükler (tanımadığını
     UNKNOWN, boş dosyayı EMPTY olarak), adı nokta ile başlayan dosya ve klasörleri atlar,
-    alt klasörleri ÖZYİNELEMELİ yükler.
+    alt klasörleri ÖZYİNELEMELİ yükler. Kökteki `scripted/`, policy.json, README ve .md
+    dosyalarını yüklemez; `batfish/runtime_data.json` gibi girişleri yükler.
 
-    Kapalı yön: gizli olmayan bir alt klasör görülürse `UnsupportedLayout` (doğrulama
-    çalışmadı, çıkış 2): alt klasörlü düzen desteklenmez, çünkü desteklemek Batfish'in
-    özyineleme kurallarını (gizli klasörler, derinlik, yinelenen hostname) birebir
-    taklit etmeyi gerektirir. Sembolik bağlantı ya da düzenli dosya olmayan giriş
+    Kapalı yön: kökte izinsiz giriş ya da `configs/` altında gizli olmayan bir alt klasör
+    görülürse `UnsupportedLayout` (doğrulama çalışmadı, çıkış 2). Alt klasör desteği
+    Batfish'in özyineleme kurallarını (gizli klasörler, derinlik, yinelenen hostname)
+    birebir taklit etmeyi gerektirirdi. Sembolik bağlantı ya da düzenli dosya olmayan giriş
     okunmadan ValueError verir. Gizli girişler okunmaz; Batfish de yüklemez.
 
     Garanti etmez: Batfish imajı bu kuralları değiştirirse eşitlik bozulur; o durumda ilk
@@ -39,6 +82,7 @@ def read_configs(snapshot: Path) -> dict[str, str]:
     cfg = snapshot / CONFIG_DIR
     if not cfg.is_dir():
         raise FileNotFoundError(f"{cfg} bulunamadı; snapshot '{CONFIG_DIR}/' klasörü içermeli")
+    check_layout(snapshot)
     entries = [p for p in sorted(cfg.iterdir()) if not p.name.startswith(".")]
     for p in entries:
         if p.is_symlink():

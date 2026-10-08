@@ -9,6 +9,7 @@ Bu dosya ayrıca read_configs'in dayandığı belgelenmemiş Batfish yükleme ku
 sabitler; Batfish imajı değişirse ilk kalan testler bunlardır.
 """
 
+import json
 import os
 import shutil
 import uuid
@@ -64,6 +65,13 @@ def test_read_configs_equals_what_batfish_loads(tmp_path):
     (cfg / "notlar.txt").write_text("yapılandırma değil\n")
     (cfg / "bos.cfg").write_text("")
     (cfg / "core.cfg~").write_text(core_copy("yedek"))
+    # Kökte izinli girişler (check_layout): içlerine yapılandırma konsa da Batfish
+    # yüklemez. (scripted/ ve policy.json zaten acme kopyasında var.)
+    (snap / "scripted" / "x.cfg").write_text(core_copy("scripted"))
+    (snap / "README.md").write_text(core_copy("readme"))
+    (snap / "LICENSE").write_text(core_copy("license"))
+    (snap / ".gizli").mkdir()
+    (snap / ".gizli" / "x.cfg").write_text(core_copy("kokgizli"))
 
     read = {f"configs/{name}" for name in read_configs(snap)}
     loaded = batfish_files(snap)
@@ -86,6 +94,45 @@ def test_batfish_loads_subdirectories_so_read_configs_refuses_them(tmp_path):
     assert {"configs/ek/core2.cfg", "configs/ek/derin/d.cfg"} <= loaded
     with pytest.raises(UnsupportedLayout):
         read_configs(snap)
+
+
+def test_batfish_loads_root_runtime_data_so_layout_is_refused(tmp_path):
+    """Neden kökü de denetliyoruz: batfish/runtime_data.json yapılandırma dosyası değildir
+    ama arayüzü kapatır (lineUp=false); kanit bu klasörü Batfish'e götürmez."""
+    from pybatfish.client.session import Session
+
+    snap = tmp_path / "snap"
+    shutil.copytree(ACME, snap)
+    (snap / "batfish").mkdir()
+    (snap / "batfish" / "runtime_data.json").write_text(json.dumps(
+        {"runtimeData": {"core": {"interfaces": {"GigabitEthernet0/1": {"lineUp": False}}}}}))
+    bf = Session(host=HOST)
+    network = f"kanit-test-{uuid.uuid4().hex[:8]}"
+    bf.set_network(network)
+    try:
+        bf.init_snapshot(str(snap), name="s", overwrite=True)
+        df = bf.q.interfaceProperties(nodes="core", properties="Active").answer().frame()
+        active = {str(r["Interface"].interface): bool(r["Active"]) for _, r in df.iterrows()}
+    finally:
+        bf.delete_network(network)
+    assert active["GigabitEthernet0/1"] is False
+    with pytest.raises(UnsupportedLayout, match="batfish"):
+        read_configs(snap)
+
+
+@pytest.mark.parametrize("entry", ["batfish/runtime_data.json", "hosts/h1.json"])
+def test_candidate_changing_other_batfish_inputs_is_never_accepted(tmp_path, entry):
+    """Eski kod: 'YAPILANDIRMA DEĞİŞMEDİ', çıkış 0."""
+    cand = tmp_path / "pr"
+    shutil.copytree(ACME, cand)
+    path = cand / entry
+    path.parent.mkdir()
+    path.write_text(json.dumps(
+        {"runtimeData": {"core": {"interfaces": {"GigabitEthernet0/1": {"lineUp": False}}}}}))
+    rc, md = check(ACME, cand, tmp_path / "r.md")
+    assert rc == 2
+    assert "Kanıt etki raporu: DOĞRULAMA ÇALIŞMADI" in md
+    assert "snapshot kökünde desteklenmeyen giriş" in md and entry.split("/")[0] in md
 
 
 def check(base: Path, cand: Path, out: Path) -> tuple[int, str]:

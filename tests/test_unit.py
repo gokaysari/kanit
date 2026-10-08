@@ -477,20 +477,19 @@ def test_table_distinguishes_empty_sources_from_unexpected_answers():
     assert _table(SimpleNamespace(frame=lambda: frame)) is frame
 
 
-def test_loop_turns_verifier_exception_into_error_not_crash(tmp_path):
-    """Beklenmeyen doğrulayıcı hatası döngüyü çökertmez; sonuç 'doğrulama çalışmadı'."""
+def test_loop_does_not_swallow_verifier_exception(tmp_path):
+    """Beklenmeyen doğrulayıcı hatası ret ya da kabul olamaz; çağırana yükselir
+    (kanit plan onu tek satırlık "Doğrulama çalışmadı" ve 2'ye çevirir)."""
 
     class Broken:
         def verify(self, *a):
             raise RuntimeError("Batfish beklenmeyen bir cevap döndürdü")
 
-    result = loop.run("x", ACME, ScriptedProposer([GOOD]), Broken())
-    assert not result.accepted and result.rounds == []
-    assert "Batfish doğrulaması çalışmadı: RuntimeError" in result.error
-    assert "Döngü durdu" in report.render(result)
+    with pytest.raises(RuntimeError):
+        loop.run("x", ACME, ScriptedProposer([GOOD]), Broken())
 
 
-def test_plan_exits_2_when_verifier_raises(tmp_path, monkeypatch):
+def test_plan_exits_2_when_verifier_raises(tmp_path, monkeypatch, capsys):
     class Broken:
         def __init__(self, host):
             pass
@@ -502,17 +501,18 @@ def test_plan_exits_2_when_verifier_raises(tmp_path, monkeypatch):
     rc = cli.main(["plan", "x", "--snapshot", str(ACME), "--scripted", str(GOOD),
                    "--out", str(tmp_path / "r.md")])
     assert rc == 2
+    (line,) = capsys.readouterr().err.strip().splitlines()
+    assert line.startswith("Doğrulama çalışmadı: ConnectionError")
 
 
 def test_loop_verifies_base_and_candidate_from_same_file_set(tmp_path):
-    """Mevcut taraf da yalnızca configs/ ile yazılır: snapshot'taki başka klasörler
-    (ör. batfish/, hosts/) yalnızca bir tarafa gitmez."""
+    """Mevcut taraf da yalnızca configs/ ile yazılır: snapshot kökündeki diğer girişler
+    (policy.json, scripted/, README) yalnızca bir tarafa gitmez."""
     snap = tmp_path / "snap"
     import shutil
 
     shutil.copytree(ACME, snap)
-    (snap / "hosts").mkdir()
-    (snap / "hosts" / "h.json").write_text("{}")
+    (snap / "README.md").write_text("# not\n")
     seen = []
 
     class Recorder(FakeVerifier):
@@ -555,7 +555,7 @@ def test_read_configs_layout_rules(tmp_path, layout):
             read_configs(snap)
 
 
-def test_plan_with_subdirectory_snapshot_exits_2(tmp_path):
+def test_plan_with_subdirectory_snapshot_exits_2(tmp_path, capsys):
     import shutil
 
     snap = tmp_path / "snap"
@@ -567,3 +567,40 @@ def test_plan_with_subdirectory_snapshot_exits_2(tmp_path):
                    "--out", str(out), "--batfish-host", "kullanilmaz.invalid"])
     assert rc == 2
     assert "desteklenmeyen düzende" in out.read_text()
+    (line,) = capsys.readouterr().err.strip().splitlines()
+    assert line.startswith("Snapshot desteklenmeyen düzende:") and "okunamadı" not in line
+
+
+@pytest.mark.parametrize(
+    "entry, allowed",
+    [
+        ("hosts/h1.json", False),
+        ("batfish/runtime_data.json", False),
+        ("iptables/h1.iptables", False),
+        ("aws_configs/x.json", False),
+        ("external_bgp_announcements.json", False),
+        ("bilinmeyen/x", False),
+        ("kok.cfg", False),
+        ("README.md", True),
+        ("NOTLAR.md", True),
+        ("LICENSE", True),
+        (".git/HEAD", True),
+        ("scripted/x.json", True),
+    ],
+)
+def test_snapshot_root_layout(tmp_path, entry, allowed):
+    """Kökte Batfish'in yükleyebileceği ya da tanınmayan giriş: desteklenmeyen düzen."""
+    import shutil
+
+    from kanit.snapshot import UnsupportedLayout
+
+    snap = tmp_path / "snap"
+    shutil.copytree(ACME, snap)
+    path = snap / entry
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{}")
+    if allowed:
+        assert set(read_configs(snap)) == {"core.cfg", "edge.cfg"}
+    else:
+        with pytest.raises(UnsupportedLayout, match=entry.split("/")[0]):
+            read_configs(snap)

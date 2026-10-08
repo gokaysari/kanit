@@ -54,17 +54,29 @@ class _Unresolved(Exception):
     """Başlangıç konumları güvenilir biçimde çözülemedi; kapalı yönde karar verilir."""
 
 
-class _NoSources(Exception):
-    """Batfish sorgunun akış kümesinin boş olduğunu söyledi: `start` o snapshot'ta etkin
-    hiçbir konuma çözülmüyor ya da çözüldüğü konumların kaynak IP uzayı boş."""
-
-
 # reachability, akış kümesi boş olduğunda tablo yerine bu metinlerden birini içeren bir
 # StringAnswerElement döndürür (durum SUCCESS). Gerçek Batfish'te gözlendi; testle sabit
 # (tests/test_location_batfish.py). Başka her tablo dışı cevap beklenmeyen hatadır.
-EMPTY_SOURCE_ANSWERS = frozenset(
-    {"No matching source locations", "All sources have empty source IpSpaces"}
-)
+NO_LOCATIONS = "No matching source locations"
+EMPTY_IPS = "All sources have empty source IpSpaces"
+EMPTY_SOURCE_ANSWERS = frozenset({NO_LOCATIONS, EMPTY_IPS})
+
+# `src`'siz `blocked` kontrolünün kaynak uzayı. Batfish `src` verilmezse kaynağı konumdan
+# çıkarır; /30 bağlantılarda ve internet ucunda bu uzay boştur ve sorgu hiçbir akışı
+# sınamaz. Engelleme beklentisi her kaynak için sınanır (sahte kaynaklar dahil; kapalı yön).
+ANY_SOURCE = "0.0.0.0/0"
+
+
+class _NoSources(Exception):
+    """Batfish sorgunun akış kümesinin boş olduğunu söyledi.
+
+    `empty_ips` False: `start` o snapshot'ta etkin hiçbir konuma çözülmüyor (oradan akış
+    başlayamaz). True: konumlar var ama Batfish'in çıkardığı kaynak IP uzayı boş; bu
+    "akış yok" DEĞİL, "sınanamadı" demektir ve hiçbir zaman kanıt sayılmaz."""
+
+    def __init__(self, text: str):
+        super().__init__(text)
+        self.empty_ips = text == EMPTY_IPS
 
 
 def _table(answer):
@@ -177,8 +189,13 @@ class BatfishVerifier:
           adla (hostname ya da arayüz adı değişikliği) sürüyor olabilir; kontrolün başlık
           uzayı o yeni konumlardan da sınanır ve ihlal varsa kontrol başarısızdır.
 
-        Boş başlangıç kümesi (Batfish "No matching source locations" / "All sources have
-        empty source IpSpaces"):
+        Kaynak uzayı kuralı: `src`'siz `blocked` kontrol her kaynakla (ANY_SOURCE) sınanır.
+        `src`'siz `reachable` kontrolde Batfish'in çıkardığı kaynak uzayı adaydaki etkin
+        başlangıç konumlarından birinde bile boşsa kontrol "sınanamadı" ve başarısızdır
+        (Batfish boş uzaylı konumu sessizce atlar). Boş kaynak uzayı ("All sources have
+        empty source IpSpaces") hiçbir yolda kanıt sayılmaz.
+
+        Boş başlangıç kümesi ("No matching source locations"):
         - niyet kontrolü: her zaman başarısız (kapalı yön; model start'ı düzeltmeli).
         - değişmez, `start` iki snapshot'ta da hiçbir arayüze çözülmüyor: başarısız
           (değişmez sınanamaz; policy.json düzeltilmeli). Önceden var olan sayılmaz.
@@ -188,6 +205,9 @@ class BatfishVerifier:
 
         Kapalı yön: konumlar karşılaştırılamazsa (`_Unresolved`) kontrol başarısızdır.
         """
+        untestable = self._empty_source_locations(bf, check)
+        if untestable is not None:
+            return CheckResult(check, kind, False, untestable)
         try:
             example = self._violation(bf, check, "cand")
         except _NoSources as exc:
@@ -199,8 +219,35 @@ class BatfishVerifier:
             self._check_lost_locations(bf, result, network_delta)
         return result
 
+    @classmethod
+    def _empty_source_locations(cls, bf, check: FlowCheck) -> str | None:
+        """`src`'siz `reachable` kontrolde adayda kaynak uzayı boş etkin konum varsa
+        açıklama (kontrol sınanamadı); yoksa None. `blocked` ya da `src`'li kontrolde
+        kaynak uzayı verilidir, bu denetim gerekmez."""
+        if check.src or check.expect != "reachable":
+            return None
+        try:
+            states = cls._location_states(bf, check.start, "cand")
+        except _Unresolved as exc:
+            return f"başlangıç konumları çözülemedi ({exc}); kontrol sınanamadı"
+        empty = sorted(loc for loc, (_, active, ips) in states.items() if active and not ips)
+        if not empty:
+            return None
+        return (
+            f"başlangıç konumunda Batfish'in çıkardığı kaynak IP uzayı boş: {', '.join(empty)}; "
+            "bu konumdan erişim sınanamadı (kontrole 'src' ekleyin)"
+        )
+
     def _no_sources(self, bf, check, kind, reason, network_delta) -> CheckResult:
         result = CheckResult(check, kind, False)
+        if reason == EMPTY_IPS:
+            # Boş kaynak uzayı "akış yok" değil, "sınanamadı"dır (blocked kontrol her
+            # zaman ANY_SOURCE ile sorulduğu için buraya yalnızca reachable gelir).
+            result.counterexample = (
+                f"başlangıç konumlarında kaynak IP uzayı boş (Batfish: {reason}); kontrol "
+                "sınanamadı (kontrole 'src' ekleyin)"
+            )
+            return result
         try:
             delta = self._location_delta(bf, check.start)
         except _Unresolved as exc:
@@ -224,7 +271,9 @@ class BatfishVerifier:
             )
             return result
         if check.expect == "blocked":
-            # Adayda bu konumlardan hiçbir akış başlamıyor; engellenmeli olan akış yok.
+            # Yalnızca "No matching source locations": start adayda etkin hiçbir konuma
+            # çözülmüyor, oradan hiçbir akış başlayamaz; engellenmeli olan akış yok.
+            # (Boş kaynak uzayı yukarıda başarısız sayıldı.)
             result.passed = True
             result.counterexample = None
             self._check_lost_locations(bf, result, network_delta, delta)
@@ -237,8 +286,10 @@ class BatfishVerifier:
         )
         try:
             self._violation(bf, check, "base")
-        except _NoSources:
-            result.preexisting = True
+        except _NoSources as exc:
+            # Mevcutta da etkin konum yok: erişim önceden de yoktu, ihlal genişlemedi.
+            # Mevcutta kaynak uzayı boşsa bu bilinemez; önceden var olan sayılmaz.
+            result.preexisting = not exc.empty_ips
         return result
 
     @staticmethod
@@ -256,10 +307,13 @@ class BatfishVerifier:
 
     @staticmethod
     def _headers(check: FlowCheck):
+        """Kontrolün başlık uzayı. `src`'siz `blocked` kontrol ANY_SOURCE ile sınanır: aksi
+        hâlde Batfish kaynağı konumdan çıkarır ve uzay boşsa hiçbir akışı sınamaz."""
         from pybatfish.datamodel.flow import HeaderConstraints
 
+        src = check.src or (ANY_SOURCE if check.expect == "blocked" else None)
         return HeaderConstraints(
-            srcIps=check.src,
+            srcIps=src,
             dstIps=check.dst,
             ipProtocols=[check.protocol] if check.protocol else None,
             dstPorts=check.dst_ports,
@@ -295,13 +349,22 @@ class BatfishVerifier:
 
     @classmethod
     def _violation_at(cls, bf, check: FlowCheck, snapshot: str, specs: list[str]) -> str | None:
-        """`_violation`, verilen konumlarla sınırlı; konumların akış kümesi boşsa None."""
+        """`_violation`, verilen konumlarla sınırlı.
+
+        Konumlar o snapshot'ta etkin değilse ("No matching source locations") oradan akış
+        başlamaz: None. Kaynak uzayı boşsa (yalnızca `src`'siz reachable'da olabilir)
+        bu konumlar sınanamamıştır: ihlal açıklaması döner (kapalı yön)."""
         if not specs:
             return None
         try:
             return cls._violation(bf, check, snapshot, start=", ".join(specs))
-        except _NoSources:
-            return None
+        except _NoSources as exc:
+            if not exc.empty_ips:
+                return None
+            return (
+                f"{', '.join(specs)}: kaynak IP uzayı boş (Batfish: {exc}); kontrol bu "
+                "konumlarda sınanamadı (kontrole 'src' ekleyin)"
+            )
 
     def _classify_preexisting(self, bf, result: CheckResult, network_delta) -> None:
         """Adayda ihlal edilen değişmezin önceden var olan ihlal sayılıp sayılmayacağı.
@@ -333,8 +396,8 @@ class BatfishVerifier:
         Sonuç boşsa ortak konumlarda iki ihlal kümesi eşittir. Dolu sonuçta yalnızca
         daralma örnekleri varsa, genişleme kümesi boş olmasaydı ondan da örnek dönecekti;
         tests/test_preexisting_batfish.py'deki aynı anda genişleten ve daraltan senaryo
-        bunu, arayüz adresi değişen senaryo da kaynak uzayı değişen ortak konumun
-        taranmasını sabitler.
+        bunu, arayüz adresi değişen senaryo da adresi değişen ortak konumda genişlemenin
+        bulunduğunu sabitler (src'siz blocked değişmez her kaynakla sınanır).
 
         Kapalı yön: konum kümesi çözülemezse, sınıflandırılamayan örnek (boş iz, bilinmeyen
         disposition, iki tarafta aynı durum) görülürse genişleme sayılır. Yeni konumda

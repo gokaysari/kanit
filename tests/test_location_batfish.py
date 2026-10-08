@@ -335,3 +335,84 @@ def test_plan_exit_codes_with_unresolvable_intent(tmp_path):
                    "--max-rounds", "1", "--out", str(out), "--batfish-host", HOST])
     assert rc == 1
     assert "Kanıt raporu: REDDEDİLDİ" in out.read_text()
+
+
+# --- Boş kaynak uzayı hiçbir zaman "kanıtlandı" değildir (denetçi KRİTİK) ---------------
+# Batfish `src` verilmezse kaynağı konumdan çıkarır; /30 bağlantılarda ve internet ucunda
+# (edge Gi0/0) bu uzay boştur ve sorgu "All sources have empty source IpSpaces" döner.
+# 2ae7eb7 bunu "akış yok" sayıp blocked değişmezi kanıtlanmış ilan ediyordu (yanlış
+# kabul); e403bfc ise 2 veriyordu.
+
+
+def test_srcless_blocked_on_transit_link_is_tested_with_any_source(tmp_path):
+    """Denetçi senaryosu A."""
+    transit = {"name": "core'un edge bağlantısından sunuculara hiçbir akış yok",
+               "start": "@enter(core[GigabitEthernet0/0])", "dst": "10.20.20.0/24",
+               "expect": "blocked"}
+    base = copy(ACME, tmp_path / "base", [transit])
+    cand = copy(base, tmp_path / "pr")
+    edit(cand / "configs" / "core.cfg", " deny ip any any\n",
+         " permit ip any 10.20.20.0 0.0.0.255\n deny ip any any\n")
+    rc, md = check(base, cand, tmp_path / "r.md")
+    assert rc == 1
+    assert "**ihlal**" in row(md, transit["name"])
+
+
+def test_srcless_internet_invariant_catches_removed_deny(tmp_path):
+    """Denetçi senaryosu A3: src'siz internet değişmezi; INTERNET-IN'deki 10/8 reddi
+    siliniyor."""
+    internet = dict(acme_invariant(INTERNET), start="@enter(edge[GigabitEthernet0/0])")
+    del internet["src"]
+    base = copy(ACME, tmp_path / "base", [internet])
+    # Mevcut ağ değişmezi her kaynakla sağlıyor; yoksa test anlamsız olur.
+    unchanged, checks = verify(base, base)
+    assert unchanged.accepted and checks[INTERNET].passed
+    cand = copy(base, tmp_path / "pr")
+    edit(cand / "configs" / "edge.cfg", " deny ip any 10.0.0.0 0.255.255.255\n", "")
+    rc, md = check(base, cand, tmp_path / "r.md")
+    assert rc == 1
+    r = row(md, INTERNET)
+    assert "**ihlal**" in r and "->10.20.20." in r
+
+
+def test_srcless_blocked_on_new_30_location_is_rejected(tmp_path):
+    """Yeni konum yolu (_violation_at): src'siz değişmezin start'ı yeni /30 arayüzünü de
+    kapsıyor; Batfish'in çıkardığı kaynak uzayı orada boş."""
+    internet = dict(acme_invariant(INTERNET))
+    del internet["src"]
+    base = copy(ACME, tmp_path / "base", [internet])
+    cand = copy(base, tmp_path / "pr")
+    edit(cand / "configs" / "edge.cfg", GI2_EDGE[0], GI2_EDGE[1].format(state="no shutdown"))
+    rc, md = check(base, cand, tmp_path / "r.md")
+    assert rc == 1
+    r = row(md, INTERNET)
+    assert "**ihlal**" in r and "GigabitEthernet0/2" in r
+
+
+def test_srcless_reachable_on_empty_source_location_is_untestable(tmp_path):
+    """reachable yönü: kaynak uzayı boş konumdan erişim sınanamaz; kanıtlandı sayılmaz."""
+    reach = {"name": "internet ucundan web sunucusuna erişim", "dst": "10.20.20.10",
+             "start": "@enter(edge[GigabitEthernet0/0])", "protocol": "TCP",
+             "dst_ports": "443", "expect": "reachable"}
+    base = copy(ACME, tmp_path / "base", [reach])
+    cand = copy(base, tmp_path / "pr")
+    edit(cand / "configs" / "core.cfg", " deny ip any any\n",
+         " permit tcp any host 10.20.20.10 eq 443\n deny ip any any\n")
+    rc, md = check(base, cand, tmp_path / "r.md")
+    assert rc == 1
+    r = row(md, reach["name"])
+    assert "**ihlal**" in r and "sınanamadı" in r
+
+
+def test_srcless_reachable_intent_on_new_30_location_is_rejected(tmp_path):
+    from kanit.models import FlowCheck
+
+    intent = FlowCheck.from_dict(
+        {"name": "yeni uçtan web", "start": "@enter(edge[GigabitEthernet0/2])",
+         "dst": "10.20.20.10", "protocol": "TCP", "dst_ports": "443", "expect": "reachable"})
+    cand = copy(ACME, tmp_path / "pr")
+    edit(cand / "configs" / "edge.cfg", GI2_EDGE[0], GI2_EDGE[1].format(state="no shutdown"))
+    verdict, checks = verify(ACME, cand, [intent])
+    c = checks[intent.name]
+    assert not verdict.accepted
+    assert not c.passed and "sınanamadı" in c.counterexample

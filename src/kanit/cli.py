@@ -16,7 +16,7 @@ from . import loop, report
 from . import review
 from . import verifier as _verifier
 from .proposer import ClaudeProposer, ScriptedProposer
-from .snapshot import CONFIG_DIR, read_configs, read_invariants
+from .snapshot import CONFIG_DIR, UnsupportedLayout, read_configs, read_invariants
 from .verifier import BatfishVerifier
 
 # Batfish'in pybatfish (v2) portu ve ön kontrol için bağlantı süresi (saniye).
@@ -55,6 +55,9 @@ def _check_snapshot(snapshot: Path) -> None:
     try:
         read_configs(snapshot)
         read_invariants(snapshot)
+    except UnsupportedLayout as exc:
+        # Okunabildi ama doğrulanan dosya kümesi bilinemez; "okunamadı" demek yanıltır.
+        raise _NotRun(f"Snapshot desteklenmeyen düzende: {_one_line(exc)}.") from None
     except Exception as exc:  # noqa: BLE001 - her okuma hatası "çalışmadı" (2) sayılır
         reason = _os_reason(exc) if isinstance(exc, OSError) else _one_line(exc)
         raise _NotRun(
