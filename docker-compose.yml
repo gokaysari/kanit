@@ -1,3 +1,6 @@
+# Proje adı sabit: repo hangi klasörde olursa olsun (worktree, /tmp kopyası) aynı
+# Batfish kapsayıcısı (kanit-batfish-1) kullanılır; ikinci kapsayıcı 9996'da çakışmaz.
+name: kanit
 services:
   batfish:
     image: batfish/allinone

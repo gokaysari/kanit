@@ -36,14 +36,24 @@ export ANTHROPIC_API_KEY=...
 make plan      # Claude ile; başka istek için: make plan INTENT="..."
 ```
 
-Rapor `kanit-rapor.md` dosyasına yazılır. Çıkış kodu kabulde 0, rette 1. Doğrudan komut: `kanit plan "<istek>" --snapshot <klasör>`; `--apply` kabul edilen değişikliği snapshot'a yazar, model `--model` ya da `KANIT_MODEL` ile seçilir.
+Rapor `kanit-rapor.md` dosyasına yazılır. Çıkış kodları `kanit plan` ve `kanit check` için aynıdır:
+
+| Kod | Anlamı |
+|---|---|
+| 0 | Kabul: son öneri doğrulamadan geçti. |
+| 1 | Ret: hiçbir öneri doğrulamadan geçmedi (kayıtlı öneriler bittiğinde de son turun reddi geçerlidir). |
+| 2 | Doğrulama çalışmadı ya da sonuç teslim edilemedi: Batfish'e ulaşılamadı, snapshot ya da kayıtlı öneri okunamadı, geçersiz argüman, API anahtarı yok, API hatası, beklenmeyen hata ya da rapor/snapshot yazılamadı. Tek satırlık bir mesaj ne yapılacağını söyler; karar verildiyse onu da söyler ("kabul edildi ama rapor yazılamadı"). Rapor (yazılabildiyse) "DOĞRULAMA ÇALIŞMADI" der. Bu bir ret değildir. Ayrıntılı hata için `KANIT_DEBUG=1`. |
+
+Batfish'e önce kısa bir bağlantı ön kontrolü yapılır (varsayılan 5 sn, `KANIT_BATFISH_TIMEOUT` ile 600 sn'ye kadar); ulaşılamazsa uzun beklemeden 2 ile durur. `--batfish-host` ana makine adı ya da IPv4 olmalı (port 9996 sabit). `--apply` ya hep ya hiç yazar: bir dosya yazılamazsa snapshot olduğu gibi kalır. `make plan` API anahtarı yoksa Batfish'i başlatmadan durur. Docker Compose proje adı `kanit` olarak sabittir; repo hangi klasörde olursa olsun aynı Batfish kapsayıcısı kullanılır.
+
+Doğrudan komut: `kanit plan "<istek>" --snapshot <klasör>`; `--apply` kabul edilen değişikliği snapshot'a yazar, model `--model` ya da `KANIT_MODEL` ile seçilir.
 
 ## Pull request botu
 
 Model çağrısı olmadan yalnızca doğrulama: PR'daki snapshot aday, hedef daldaki mevcut.
 
 ```bash
-kanit check --base <hedef dal snapshot> --candidate <PR snapshot>   # 0 kabul, 1 ret, 2 doğrulama çalışmadı
+kanit check --base <hedef dal snapshot> --candidate <PR snapshot>   # 0 kabul, 1 ret, 2 doğrulama çalışmadı (kanit plan ile aynı)
 ```
 
 Değişmezler hedef daldaki `policy.json`'dan okunur; PR'ın eklediği yeni değişmezler de kontrol edilir. Hedef daldaki bir değişmezi silen ya da değiştiren PR, yapılandırması ne olursa olsun reddedilir (değişmez önce tek başına silinip sonra ihlal edilemesin). PR snapshot'ında sembolik bağlantı varsa hiçbir dosya okunmadan reddedilir; bağlantı snapshot dışındaki içeriği (ör. ortam değişkenlerini) rapora ya da modele taşıyabilirdi.
