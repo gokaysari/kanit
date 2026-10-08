@@ -19,8 +19,9 @@ export function Landing({ dict }: { dict: Dictionary }) {
         {dict.skipLink}
       </a>
       <header className={styles.top}>
-        <a className={styles.mark} href={dict.lang === "tr" ? "/" : "/en/"} aria-label={site.name}>
-          <span className={styles.markGlyph}>N</span>
+        <a className={styles.mark} href={dict.lang === "tr" ? "/" : "/en/"}>
+          {/* Harf simgesi süs; erişilebilir ad görünen addan (site.name) gelir. */}
+          <span className={styles.markGlyph} aria-hidden="true">N</span>
           <span>{site.name}</span>
         </a>
         {/* Dar ekranda bölüm bağlantıları ikinci satırda yatay kaydırılır; JS gerekmez. */}
@@ -111,7 +112,7 @@ export function Landing({ dict }: { dict: Dictionary }) {
           <div className={styles.sectionHead}>
             <p>03 / {labels.chapter}</p>
             <h2 id="demo-title">{dict.demo.title}</h2>
-            <p>{site.repo ? labels.fieldRepo : labels.fieldLive}</p>
+            <p>{site.repo ? labels.fieldRepo : site.demoVideo ? labels.fieldLive : labels.fieldRequest}</p>
           </div>
           <div className={styles.demoInner}>
             <DemoSlot demo={dict.demo} lang={dict.lang} requestHref={mailto(`${site.name} demo`)} />

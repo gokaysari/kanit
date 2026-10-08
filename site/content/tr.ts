@@ -28,6 +28,7 @@ export const tr: Dictionary = {
     process: "Süreç / 03 adım",
     fieldRepo: "Sahada çalıştır",
     fieldLive: "Gerçek make demo çıktısı",
+    fieldRequest: "Canlı gösterim",
     scope: "Kanıtın sınırı",
     chapter: "Bölüm",
     availability: "Pilot erişimi açık",
@@ -113,7 +114,7 @@ export const tr: Dictionary = {
     title: "Neyi kanıtlar",
     items: [
       "Önerinin kendi akış kontrollerinin (niyet kontrolleri) sağlandığını; her kontrol, tanımladığı akış kümesinin tamamında sınanır.",
-      "Tanımladığınız değişmez kuralların değişiklikten sonra da geçerli olduğunu.",
+      "Değişikliğin tanımladığınız değişmezlerde yeni ihlal eklemediğini ya da var olan bir ihlali genişletmediğini; önceden var olan ihlaller raporda ayrıca gösterilir.",
       "Değişikliğin yeni ayrıştırma hatası ya da tanımsız referans getirmediğini.",
       "Ayrıca davranışı değişen örnek akışları, öncesi ve sonrasıyla listeler.",
     ],

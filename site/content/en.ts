@@ -28,6 +28,7 @@ export const en: Dictionary = {
     process: "Process / 03 steps",
     fieldRepo: "Run it locally",
     fieldLive: "Real make demo output",
+    fieldRequest: "Live walkthrough",
     scope: "Boundary of proof",
     chapter: "Chapter",
     availability: "Pilot access is open",
@@ -113,7 +114,7 @@ export const en: Dictionary = {
     title: "What it proves",
     items: [
       "That the proposal's own flow checks (intent checks) hold; each check is tested over the whole flow set it defines.",
-      "That the invariant rules you defined still hold after the change.",
+      "That the change adds no new violation of your invariants and does not widen an existing one; violations that were already there are shown separately in the report.",
       "That the change adds no parse errors or undefined references.",
       "It also lists example flows whose behaviour changed, before and after.",
     ],

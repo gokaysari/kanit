@@ -25,6 +25,8 @@ export type Dictionary = {
     process: string;
     fieldRepo: string;
     fieldLive: string;
+    // Repo ve video yokken: canlı gösterim
+    fieldRequest: string;
     scope: string;
     chapter: string;
     availability: string;

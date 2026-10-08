@@ -86,8 +86,8 @@
 }
 @media (max-width: 560px) {
   .top { min-height: 66px; }
-  .mark > span:last-child { display: none; }
-  .heroGrid { padding-top: 140px; }
+  .mark > span:last-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .heroGrid { padding-top: 140px; gap: 24px; }
   .title { font-size: clamp(50px, 17vw, 78px); }
   .heroActions { align-items: flex-start; flex-direction: column; }
   .sectionHead { grid-template-columns: 1fr; gap: 18px; }
