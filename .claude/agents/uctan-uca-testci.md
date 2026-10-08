@@ -31,7 +31,7 @@ Her adım için beklenen sonucu önceden yaz, sonra çalıştır ve gerçek sonu
 2. **Komut satırı ve sözleşme** (0 kabul, 1 ret, 2 çalışmadı).
    - `make demo`.
    - Yalnızca ret senaryosu: `--scripted examples/acme/scripted/01-fazla-genis.json`.
-   - Batfish'e ulaşılamaması: `--batfish-host 127.0.0.2`. macOS'ta `timeout` yok, düz çalıştır.
+   - Batfish'e ulaşılamaması: `--batfish-host 192.0.2.1` (zaman aşımı) ve `--batfish-host batfish.invalid` (çözülemeyen ad). 127.0.0.x kullanma: Linux'ta loopback'e gider ve yerelde çalışan Batfish'e ulaşır. macOS'ta `timeout` yok, düz çalıştır.
    - Anahtarsız `make plan`.
    - Geçersiz snapshot yolu.
    - Bozuk kayıtlı öneri JSON'u.

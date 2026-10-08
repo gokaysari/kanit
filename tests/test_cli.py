@@ -54,7 +54,14 @@ class ExplodingVerifier:
         raise ConnectionResetError("Connection aborted.\nRemoteDisconnected")
 
 
-def kanit(*args: str, host: str = "127.0.0.2", **env: str) -> subprocess.CompletedProcess:
+# Her platformda gerçekten ulaşılamayan adresler. 127.0.0.0/8 kullanma: Linux'ta
+# tamamı loopback'e gider ve aynı makinede çalışan Batfish'e (ör. CI servis kapsayıcısı)
+# ulaşır.
+UNREACHABLE_IP = "192.0.2.1"  # RFC 5737 TEST-NET-1: yönlendirilmez
+UNRESOLVABLE_HOST = "batfish.invalid"  # RFC 6761: .invalid hiçbir zaman çözülmez
+
+
+def kanit(*args: str, host: str = UNREACHABLE_IP, **env: str) -> subprocess.CompletedProcess:
     """CLI'yi ayrı süreçte çalıştırır; ham traceback çıktıda görünür olurdu."""
     return subprocess.run(
         [sys.executable, "-m", "kanit.cli", "plan", INTENT, "--batfish-host", host, *args],
@@ -105,18 +112,29 @@ def test_missing_scripted_file_exits_2_with_hint(tmp_path):
 
 
 def test_unreachable_batfish_exits_2_quickly_and_writes_report(tmp_path):
-    # Gerçek CLI, ayrı süreç. 127.0.0.2: macOS'ta zaman aşımı, Linux'ta bağlantı reddi;
-    # ikisi de kısa ön kontrolle 2 vermeli. Süre sınırı yalnızca pybatfish'in kendi
-    # dakikalarca süren beklemesini yakalar; alt süreç ve içe aktarma maliyeti ortama
-    # göre değiştiği için kısa zaman aşımının kullanıldığını burada değil,
-    # test_preflight_uses_configured_timeout sınar.
+    # Gerçek CLI, ayrı süreç. TEST-NET-1 adresine bağlantı zaman aşımına düşer (ya da
+    # ağ yapılandırmasına göre hemen "ulaşılamaz" döner); ikisi de kısa ön kontrolle 2
+    # vermeli. Sebep platforma bağlı olduğu için burada sınanmaz. Süre sınırı yalnızca
+    # pybatfish'in dakikalarca süren beklemesini yakalar; kısa zaman aşımının
+    # kullanıldığını test_preflight_uses_configured_timeout sınar.
     out = tmp_path / "r.md"
     started = time.monotonic()
     p = kanit("--snapshot", str(ACME), "--scripted", str(GOOD), "--out", str(out),
               KANIT_BATFISH_TIMEOUT="0.5")
     assert time.monotonic() - started < 20
     assert p.returncode == 2
-    assert_not_run(p.stderr, p.stdout, out, "Batfish'e ulaşılamadı", "127.0.0.2", "make batfish")
+    assert_not_run(p.stderr, p.stdout, out, "Batfish'e ulaşılamadı", UNREACHABLE_IP, "make batfish")
+
+
+def test_unresolvable_batfish_host_exits_2_with_reason(tmp_path):
+    # .invalid adları hiçbir zaman çözülmez (RFC 6761): çözümleme hatası yolu, her
+    # platformda aynı sebeple.
+    out = tmp_path / "r.md"
+    p = kanit("--snapshot", str(ACME), "--scripted", str(GOOD), "--out", str(out),
+              host=UNRESOLVABLE_HOST, KANIT_BATFISH_TIMEOUT="0.5")
+    assert p.returncode == 2
+    assert_not_run(p.stderr, p.stdout, out, "Batfish'e ulaşılamadı", UNRESOLVABLE_HOST,
+                   "ana makine adı çözülemedi", "make batfish")
 
 
 @pytest.mark.parametrize(("raw", "expected"), [(None, 5.0), ("0.5", 0.5), ("4", 4.0)])
@@ -135,8 +153,8 @@ def test_preflight_uses_configured_timeout(monkeypatch, raw, expected):
 
     monkeypatch.setattr(cli.socket, "create_connection", fake_create_connection)
     with pytest.raises(cli._NotRun) as info:
-        cli._check_batfish("127.0.0.2")
-    assert seen == [(("127.0.0.2", cli.BATFISH_PORT), expected)]
+        cli._check_batfish(UNREACHABLE_IP)
+    assert seen == [((UNREACHABLE_IP, cli.BATFISH_PORT), expected)]
     assert f"zaman aşımı, {expected:g} sn" in str(info.value)
 
 

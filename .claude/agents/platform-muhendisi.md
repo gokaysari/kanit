@@ -20,7 +20,7 @@ Kabul kuralına (`Verdict.accepted`) ve çekirdek doğrulama mantığına dokunm
 1. **Hazırlık.** Worktree'n `origin/main`'den başlamalı. Sonra `make setup` ve `COMPOSE_PROJECT_NAME=kanit make test`. Site'ye dokunduysan `cd site && npm ci && npm run typecheck && npm run build` da çalıştır.
 2. **Sözleşmeyi yaz.** Değiştireceğin davranışın kullanıcıya görünen sözleşmesini önce yaz: çıkış kodu, rapor alanları, PR yorumu, kontrolün rengi. Sonra o sözleşmeyi sınayan testi yaz.
 3. **Uygula.** Ortak dosyalarda (`cli.py`, `pyproject.toml`, `Makefile`) değişikliği küçük ve yerel tut; birleştirme kolay olsun.
-4. **Kanıtla.** Komutları gerçekten çalıştır: hata yolları dahil. Örneğin Batfish'e ulaşılamadığında `--batfish-host 127.0.0.2`. İş akışı adımlarını `tests/test_action.py` düzeneğiyle yerelde gerçek bash'le koş. Yalnızca gerçek GitHub'da görülebilecek şeyleri "doğrulanamadı" diye ayrı yaz.
+4. **Kanıtla.** Komutları gerçekten çalıştır: hata yolları dahil. Örneğin Batfish'e ulaşılamadığında `--batfish-host 192.0.2.1` (zaman aşımı) ya da `--batfish-host batfish.invalid` (çözülemeyen ad). 127.0.0.x kullanma: Linux'ta loopback'e gider ve yerelde çalışan Batfish'e ulaşır. İş akışı adımlarını `tests/test_action.py` düzeneğiyle yerelde gerçek bash'le koş. Yalnızca gerçek GitHub'da görülebilecek şeyleri "doğrulanamadı" diye ayrı yaz.
 5. **Kendini denetle.**
    - Sır sızıntısı var mı?
    - `pull_request_target` var mı?
