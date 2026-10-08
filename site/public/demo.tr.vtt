@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:05.000
+Niyet: Kullanıcı ağından veritabanı sunucusuna (10.20.20.30) tcp/5432 aç
+
+2
+00:00:05.000 --> 00:00:14.800
+make demo: Batfish kapsayıcısı zaten çalışıyor; Batfish'in yanıt vermesi bekleniyor (gerçek süre)
+
+3
+00:00:14.800 --> 00:00:21.600
+kanit plan, kayıtlı iki öneriyi (--scripted, model çağrısı yok) Batfish'te sırayla doğruluyor
+
+4
+00:00:21.600 --> 00:00:24.700
+Tur 1: RET. Tur 2: KABUL. Rapor: kanit-rapor.md
+
+5
+00:00:24.700 --> 00:00:29.700
+Rapor: KABUL EDİLDİ, 2 tur
+
+6
+00:00:29.700 --> 00:00:37.700
+Tur 1 önerisi: permit ip, veritabanı sunucusuna tüm IP trafiği
+
+7
+00:00:37.700 --> 00:00:47.700
+İhlal: 10.10.10.0:49152 -> 10.20.20.30:22 TCP (SYN) teslim ediliyor (yeni ihlal). SSH değişmezi bozuluyor
+
+8
+00:00:47.700 --> 00:00:53.700
+Davranışı değişen örnek akışlar: ICMP de artık sunucuya ulaşıyor
+
+9
+00:00:53.700 --> 00:01:01.700
+Tur 2 önerisi: yalnızca tcp/5432 (permit tcp ... eq 5432)
+
+10
+00:01:01.700 --> 00:01:09.700
+Dört kontrolün dördü de kanıtlandı: üç değişmez ve önerinin tcp/5432 niyet kontrolü
+
+11
+00:01:09.700 --> 00:01:16.500
+Sonuç: fazla geniş satır karşı örnekle reddedildi, dar satır kabul edildi

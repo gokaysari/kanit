@@ -11,9 +11,7 @@ function mailto(subject: string) {
 
 export function Landing({ dict }: { dict: Dictionary }) {
   const otherLang = dict.lang === "tr" ? "en" : "tr";
-  const labels = dict.lang === "tr"
-    ? { eyebrow: "Doğrulanmış ağ değişiklikleri", record: "Canlı kanıt kaydı", process: "Süreç / 03 adım", field: site.repo ? "Sahada çalıştır" : "Canlı gösterim", scope: "Kanıtın sınırı", chapter: "Bölüm", availability: "Pilot erişimi açık" }
-    : { eyebrow: "Verified network changes", record: "Live proof record", process: "Process / 03 steps", field: site.repo ? "Run it locally" : "Live walkthrough", scope: "Boundary of proof", chapter: "Chapter", availability: "Pilot access is open" };
+  const labels = dict.labels;
 
   return (
     <div className={styles.page}>
@@ -21,23 +19,26 @@ export function Landing({ dict }: { dict: Dictionary }) {
         {dict.skipLink}
       </a>
       <header className={styles.top}>
-        <a className={styles.mark} href={dict.lang === "tr" ? "/" : "/en/"} aria-label={site.name}>
-          <span className={styles.markGlyph}>N</span>
+        <a className={styles.mark} href={dict.lang === "tr" ? "/" : "/en/"}>
+          {/* Harf simgesi süs; erişilebilir ad görünen addan (site.name) gelir. */}
+          <span className={styles.markGlyph} aria-hidden="true">N</span>
           <span>{site.name}</span>
         </a>
+        {/* Dar ekranda bölüm bağlantıları ikinci satırda yatay kaydırılır; JS gerekmez. */}
         <nav className={styles.nav} aria-label={dict.nav.label}>
-          <a href="#record">01 — {labels.record}</a>
+          <a href="#record">01 — {dict.nav.record}</a>
           <a href="#how">02 — {dict.nav.how}</a>
           <a href="#demo">03 — {dict.nav.demo}</a>
-          <a
-            className={styles.lang}
-            href={dict.otherLang.href}
-            hrefLang={otherLang}
-            lang={otherLang}
-          >
-            {dict.otherLang.label}
-          </a>
+          <a href="#limits">04 — {dict.nav.limits}</a>
         </nav>
+        <a
+          className={styles.lang}
+          href={dict.otherLang.href}
+          hrefLang={otherLang}
+          lang={otherLang}
+        >
+          {dict.otherLang.label}
+        </a>
       </header>
 
       <main id="main" tabIndex={-1}>
@@ -73,9 +74,10 @@ export function Landing({ dict }: { dict: Dictionary }) {
         <section className={`${styles.band} ${styles.recordBand}`} id="record">
           <div className={styles.sectionHead}>
             <p>01 / {labels.chapter}</p>
-            <h2>{labels.record}</h2>
+            <h2>{dict.record.title}</h2>
             <p>{dict.record.request}</p>
           </div>
+          <p className={styles.provenance}>{dict.record.provenance}</p>
           <ChangeRecord record={dict.record} />
         </section>
 
@@ -110,10 +112,10 @@ export function Landing({ dict }: { dict: Dictionary }) {
           <div className={styles.sectionHead}>
             <p>03 / {labels.chapter}</p>
             <h2 id="demo-title">{dict.demo.title}</h2>
-            <p>{labels.field}</p>
+            <p>{site.repo ? labels.fieldRepo : site.demoVideo ? labels.fieldLive : labels.fieldRequest}</p>
           </div>
           <div className={styles.demoInner}>
-            <DemoSlot demo={dict.demo} requestHref={mailto(`${site.name} demo`)} />
+            <DemoSlot demo={dict.demo} lang={dict.lang} requestHref={mailto(`${site.name} demo`)} />
           </div>
         </section>
 
@@ -148,7 +150,7 @@ export function Landing({ dict }: { dict: Dictionary }) {
               <span aria-hidden="true">↗</span>
             </a>
           </div>
-          <a className={styles.bigMail} href={`mailto:${site.email}`}>{site.email}</a>
+          <a className={styles.bigMail} href={mailto(`${site.name} ${dict.closing.mailSubject}`)}>{site.email}</a>
         </section>
       </main>
 

@@ -58,10 +58,20 @@
 }
 
 .ok {
-  color: var(--ok);
+  /* Koyu zeminde --ok yeterli karşıtlık vermiyor (axe color-contrast, 3.1:1). */
+  color: var(--acid);
 }
 
 .no {
+  color: #ff8b7e;
+}
+
+/* Seçili sekmenin zemini açık (acid); orada koyu tonlar okunur. */
+.tabs button[aria-selected="true"] .ok {
+  color: var(--ok);
+}
+
+.tabs button[aria-selected="true"] .no {
   color: var(--no);
 }
 
@@ -114,11 +124,11 @@
 }
 
 .pass .result {
-  color: var(--ok);
+  color: var(--acid);
 }
 
 .fail .result {
-  color: var(--no);
+  color: #ff8b7e;
 }
 
 .counter {

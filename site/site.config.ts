@@ -7,6 +7,11 @@ export const site = {
   // Kaynak kod reposu private; herkese açılırsa adresi buraya yaz, bağlantılar kendiliğinden görünür.
   repo: null as string | null,
   batfish: "https://github.com/batfish/batfish",
-  // Kısa demo kaydının adresi (ör. "/demo.mp4"). Kayıt yokken null kalır; sitede dürüst bir yer tutucu görünür.
-  demoVideo: null as string | null,
+  // Kısa demo kaydı (gerçek `make demo` çıktısı). null olursa sitede dürüst bir yer tutucu görünür.
+  // Dosyalar site/public/ altında: video, kapak görseli ve dile göre altyazı.
+  demoVideo: "/demo.webm" as string | null,
+  // H.264 MP4 sürümü (iOS Safari için). Eklenirse <source> listesinde WebM'den önce gelir.
+  demoVideoMp4: null as string | null,
+  demoPoster: "/demo-poster.png",
+  demoCaptions: { tr: "/demo.tr.vtt", en: "/demo.en.vtt" },
 } as const;

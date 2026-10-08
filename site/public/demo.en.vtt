@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:05.000
+Intent: open tcp/5432 from the user network to the database server (10.20.20.30)
+
+2
+00:00:05.000 --> 00:00:14.800
+make demo: the Batfish container is already running; waiting for Batfish to respond (real time)
+
+3
+00:00:14.800 --> 00:00:21.600
+kanit plan verifies two recorded proposals (--scripted, no model call) in Batfish, one after another
+
+4
+00:00:21.600 --> 00:00:24.700
+Round 1: REJECT. Round 2: ACCEPT. Report: kanit-rapor.md
+
+5
+00:00:24.700 --> 00:00:29.700
+Report: ACCEPTED after 2 rounds
+
+6
+00:00:29.700 --> 00:00:37.700
+Round 1 proposal: permit ip, all IP traffic to the database server
+
+7
+00:00:37.700 --> 00:00:47.700
+Violation: 10.10.10.0:49152 -> 10.20.20.30:22 TCP (SYN) is delivered (new violation). The SSH invariant breaks
+
+8
+00:00:47.700 --> 00:00:53.700
+Sample flows whose behaviour changed: ICMP now reaches the server too
+
+9
+00:00:53.700 --> 00:01:01.700
+Round 2 proposal: tcp/5432 only (permit tcp ... eq 5432)
+
+10
+00:01:01.700 --> 00:01:09.700
+All four checks proved: three invariants and the proposal's tcp/5432 intent check
+
+11
+00:01:09.700 --> 00:01:16.500
+Result: the overly broad line was rejected with a counterexample, the narrow line accepted

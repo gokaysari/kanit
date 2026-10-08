@@ -1,9 +1,11 @@
 import { BROAD_LINE, COUNTEREXAMPLE, NARROW_LINE } from "./record";
 import type { Dictionary } from "./types";
 
+// Check names translate the ones in examples/acme/policy.json and the recorded proposals.
 const checks = {
+  web: "Users reach the web server over HTTPS",
   db: "Users reach the database on tcp/5432",
-  internet: "The internet cannot reach the server network",
+  internet: "The internet cannot reach the server network at all",
   ssh: "Users cannot SSH to the database server",
 };
 
@@ -20,7 +22,17 @@ export const en: Dictionary = {
     label: "Example change record, round 2",
   },
   skipLink: "Skip to content",
-  nav: { label: "Page sections", how: "How it works", demo: "Demo", limits: "Limits" },
+  nav: { label: "Page sections", record: "Example record", how: "How it works", demo: "Demo", limits: "Limits" },
+  labels: {
+    eyebrow: "Verified network changes",
+    process: "Process / 03 steps",
+    fieldRepo: "Run it locally",
+    fieldLive: "Real make demo output",
+    fieldRequest: "Live walkthrough",
+    scope: "Boundary of proof",
+    chapter: "Chapter",
+    availability: "Pilot access is open",
+  },
   hero: {
     title: "Prove a network change before it goes live.",
     lede: "Describe the change in plain language. Claude writes the configuration change and Batfish verifies it against a model of your network. You only see changes that passed.",
@@ -29,6 +41,9 @@ export const en: Dictionary = {
   },
   record: {
     label: "Example change record",
+    title: "Example change record",
+    provenance:
+      "Real Batfish output with recorded proposals: both proposals were written by hand and recorded (--scripted); no model was called for this record.",
     requestLabel: "Change request",
     request: "Open tcp/5432 from the user network to the database server (10.20.20.30).",
     proved: "proved",
@@ -43,9 +58,10 @@ export const en: Dictionary = {
         accepted: false,
         addedLine: BROAD_LINE,
         checks: [
-          { label: checks.db, passed: true },
+          { label: checks.web, passed: true },
           { label: checks.internet, passed: true },
           { label: checks.ssh, passed: false, counterexample: COUNTEREXAMPLE },
+          { label: checks.db, passed: true },
         ],
         stamp: "REJECTED",
       },
@@ -55,9 +71,10 @@ export const en: Dictionary = {
         accepted: true,
         addedLine: NARROW_LINE,
         checks: [
-          { label: checks.db, passed: true },
+          { label: checks.web, passed: true },
           { label: checks.internet, passed: true },
           { label: checks.ssh, passed: true },
+          { label: checks.db, passed: true },
         ],
         stamp: "ACCEPTED",
       },
@@ -68,7 +85,7 @@ export const en: Dictionary = {
     steps: [
       {
         title: "Claude writes the change",
-        body: "It reads your current configurations and rules, then produces the narrowest change that meets the request, plus the flow checks that would prove it.",
+        body: "It reads your current configurations and rules, then writes a proposal that aims for the narrowest change meeting the request, plus flow checks meant to show the request is met.",
       },
       {
         title: "Batfish verifies it",
@@ -76,24 +93,28 @@ export const en: Dictionary = {
       },
       {
         title: "The counterexample goes back",
-        body: "A rejected proposal is returned to Claude with the reason and gets fixed. If nothing passes, your configuration is left untouched.",
+        body: "A rejected proposal goes back to Claude with the counterexample and a request to fix it, for up to three rounds. If nothing passes, your configuration is left untouched.",
       },
     ],
   },
   demo: {
     title: "Short demo",
     placeholder: "The demo recording is not ready yet.",
-    body: "Until it is, you can run the same flow on your own machine: the overly broad proposal is rejected with a counterexample and the narrow one is accepted. Docker and Python are enough; no API key needed.",
+    body: "You can run the same flow on your own machine: the overly broad proposal is rejected with a counterexample and the narrow one is accepted. Docker and Python are enough; no API key needed.",
     commandLabel: "Command",
     setupLink: "Setup steps",
-    requestBody: "Until it is, we can run the same flow for you live: the overly broad proposal is rejected with a counterexample and the narrow one is accepted.",
+    requestBody: "We can also run the same flow for you live: the overly broad proposal is rejected with a counterexample and the narrow one is accepted.",
     requestLink: "Request a live walkthrough",
+    videoNote:
+      "The recording is real make demo output: Batfish is real, the two proposals are recorded (--scripted) and no model is called. Waiting and verification times are real time.",
+    videoFallback: "The video could not be played in this browser (WebM format).",
+    videoDownload: "Download the video",
   },
   proves: {
     title: "What it proves",
     items: [
-      "That every flow the request requires is reachable, or blocked.",
-      "That the invariant rules you defined still hold after the change.",
+      "That the proposal's own flow checks (intent checks) hold; each check is tested over the whole flow set it defines.",
+      "That the change adds no new violation of your invariants and does not widen an existing one; violations that were already there are shown separately in the report.",
       "That the change adds no parse errors or undefined references.",
       "It also lists example flows whose behaviour changed, before and after.",
     ],
@@ -101,6 +122,7 @@ export const en: Dictionary = {
   limits: {
     title: "What it does not",
     items: [
+      "The intent checks are currently written by the model that proposes the change; that they cover the whole request is not separately proved.",
       "It cannot know a rule you never wrote down. Protection is only as strong as your invariants.",
       "Devices and features Batfish does not model are out of scope.",
       "The model is built from configuration; it does not see runtime problems such as hardware faults or software bugs.",
@@ -109,8 +131,9 @@ export const en: Dictionary = {
   },
   closing: {
     title: "Try it on your own network",
-    body: "Verification runs on a Batfish instance on your own machine, and the tool never connects to a device. If you have Claude write the change, your configurations are sent to the Anthropic API. We are looking for our first pilot teams.",
+    body: "Verification runs in Batfish with no model call: on your own machine when run locally, in CI (a GitHub runner) for the PR bot. If you have Claude write the change (kanit plan, or /kanit plan on a PR), your configurations are sent to the Anthropic API. The tool never connects to a device. We are looking for our first pilot teams.",
     cta: "Write to us about a pilot",
+    mailSubject: "contact",
   },
   footer: { builtOn: "Built on open-source", and: "and Claude.", source: "Source code" },
   notFound: {
